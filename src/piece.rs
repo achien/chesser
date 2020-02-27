@@ -1,4 +1,4 @@
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Color {
   White,
   Black,
@@ -6,7 +6,7 @@ pub enum Color {
   NumColors,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Piece {
   WhitePawn,
   BlackPawn,

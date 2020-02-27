@@ -1,8 +1,19 @@
-use num_enum::UnsafeFromPrimitive;
+use num_enum::{TryFromPrimitive, UnsafeFromPrimitive};
+use std::convert::TryFrom;
 
-#[rustfmt::skip]
-#[derive(Debug, Copy, Clone, PartialEq, UnsafeFromPrimitive)]
+#[derive(
+  Debug,
+  Clone,
+  Copy,
+  Eq,
+  Ord,
+  PartialOrd,
+  PartialEq,
+  TryFromPrimitive,
+  UnsafeFromPrimitive,
+)]
 #[repr(i32)]
+#[rustfmt::skip]
 pub enum Square {
   A1, B1, C1, D1, E1, F1, G1, H1,
   A2, B2, C2, D2, E2, F2, G2, H2,
@@ -12,12 +23,11 @@ pub enum Square {
   A6, B6, C6, D6, E6, F6, G6, H6,
   A7, B7, C7, D7, E7, F7, G7, H7,
   A8, B8, C8, D8, E8, F8, G8, H8,
-
-  NumSquares,
-  Nil,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, UnsafeFromPrimitive)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, TryFromPrimitive, UnsafeFromPrimitive,
+)]
 #[repr(i32)]
 pub enum Rank {
   R1,
@@ -41,7 +51,9 @@ pub const RANKS: [Rank; 8] = [
   Rank::R8,
 ];
 
-#[derive(Debug, Copy, Clone, PartialEq, UnsafeFromPrimitive)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, TryFromPrimitive, UnsafeFromPrimitive,
+)]
 #[repr(i32)]
 pub enum File {
   A,
@@ -68,20 +80,40 @@ pub const FILES: [File; 8] = [
 impl Square {
   pub fn from_file_rank(file: File, rank: Rank) -> Self {
     let index = 8 * (rank as i32) + (file as i32);
-    debug_assert!(index < (Square::NumSquares as i32));
+    debug_assert!(Square::try_from(index).is_ok());
     unsafe { Self::from_unchecked(index) }
   }
 
   pub fn file(self) -> File {
     let index = (self as i32) % 8;
-    debug_assert!(index >= (File::A as i32) && index <= (File::H as i32));
+    debug_assert!(File::try_from(index).is_ok());
     unsafe { File::from_unchecked(index) }
   }
 
   pub fn rank(self) -> Rank {
     let index = (self as i32) / 8;
-    debug_assert!(index >= (Rank::R1 as i32) && index <= (Rank::R8 as i32));
+    debug_assert!(Rank::try_from(index).is_ok());
     unsafe { Rank::from_unchecked(index) }
+  }
+
+  pub fn offset_rank(self, d_rank: i32) -> Option<Self> {
+    let rank_num = (self.rank() as i32) + d_rank;
+    if rank_num < (Rank::R1 as i32) || rank_num > (Rank::R8 as i32) {
+      None
+    } else {
+      let rank = unsafe { Rank::from_unchecked(rank_num) };
+      Some(Self::from_file_rank(self.file(), rank))
+    }
+  }
+
+  pub fn offset_file(self, d_file: i32) -> Option<Self> {
+    let file_num = (self.file() as i32) + d_file;
+    if file_num < (File::A as i32) || file_num > (File::H as i32) {
+      None
+    } else {
+      let file = unsafe { File::from_unchecked(file_num) };
+      Some(Self::from_file_rank(file, self.rank()))
+    }
   }
 
   pub fn parse_algebraic(algebraic: &str) -> Result<Self, String> {
@@ -142,6 +174,29 @@ impl Square {
   }
 }
 
+pub struct Squares {
+  square_num: i32,
+}
+
+impl Iterator for Squares {
+  type Item = Square;
+
+  fn next(&mut self) -> Option<Square> {
+    if self.square_num >= 64 {
+      None
+    } else {
+      debug_assert!(Square::try_from(self.square_num).is_ok());
+      let square = unsafe { Square::from_unchecked(self.square_num) };
+      self.square_num += 1;
+      Some(square)
+    }
+  }
+}
+
+pub fn squares() -> Squares {
+  Squares { square_num: 0 }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -184,5 +239,32 @@ mod tests {
     assert_eq!(Square::H8, Square::parse_algebraic("h8").unwrap());
     assert_eq!(Square::E3, Square::parse_algebraic("e3").unwrap());
     assert_eq!(Square::F7, Square::parse_algebraic("f7").unwrap());
+  }
+
+  #[test]
+  fn test_offset_rank() {
+    assert_eq!(Some(Square::A1), Square::A3.offset_rank(-2));
+    assert_eq!(Some(Square::A8), Square::A3.offset_rank(5));
+    assert_eq!(None, Square::A3.offset_rank(-3));
+    assert_eq!(None, Square::A3.offset_rank(6));
+    assert_eq!(Some(Square::A3), Square::A3.offset_rank(0));
+  }
+
+  #[test]
+  fn test_offset_file() {
+    assert_eq!(Some(Square::A3), Square::B3.offset_file(-1));
+    assert_eq!(Some(Square::H3), Square::B3.offset_file(6));
+    assert_eq!(None, Square::B3.offset_file(-2));
+    assert_eq!(None, Square::B3.offset_file(7));
+    assert_eq!(Some(Square::B3), Square::B3.offset_file(0));
+  }
+
+  #[test]
+  fn test_squares_iter() {
+    let mut square_count: i32 = 0;
+    for _ in squares() {
+      square_count += 1;
+    }
+    assert_eq!(64, square_count);
   }
 }

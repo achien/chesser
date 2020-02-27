@@ -1,6 +1,7 @@
 use crate::piece::*;
 use crate::square::*;
 
+#[derive(Debug, PartialEq)]
 pub enum MoveKind {
   DoublePawnPush,
   CastleK,
