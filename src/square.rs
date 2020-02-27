@@ -66,8 +66,59 @@ pub const FILES: [File; 8] = [
 ];
 
 impl Square {
+  pub fn from_file_rank(file: File, rank: Rank) -> Self {
+    let index = 8 * (rank as i32) + (file as i32);
+    debug_assert!(index < (Square::NumSquares as i32));
+    unsafe { Self::from_unchecked(index) }
+  }
+
+  pub fn file(self) -> File {
+    let index = (self as i32) % 8;
+    debug_assert!(index >= (File::A as i32) && index <= (File::H as i32));
+    unsafe { File::from_unchecked(index) }
+  }
+
+  pub fn rank(self) -> Rank {
+    let index = (self as i32) / 8;
+    debug_assert!(index >= (Rank::R1 as i32) && index <= (Rank::R8 as i32));
+    unsafe { Rank::from_unchecked(index) }
+  }
+
+  pub fn parse_algebraic(algebraic: &str) -> Result<Self, String> {
+    if algebraic.len() > 2 {
+      return Err(format!("Invalid square: {}", algebraic));
+    }
+    let mut chars = algebraic.chars();
+    let file = match chars.next() {
+      Some('a') => File::A,
+      Some('b') => File::B,
+      Some('c') => File::C,
+      Some('d') => File::D,
+      Some('e') => File::E,
+      Some('f') => File::F,
+      Some('g') => File::G,
+      Some('h') => File::H,
+      _ => return Err(format!("Invalid square: {}", algebraic)),
+    };
+    let rank = match chars.next() {
+      Some('1') => Rank::R1,
+      Some('2') => Rank::R2,
+      Some('3') => Rank::R3,
+      Some('4') => Rank::R4,
+      Some('5') => Rank::R5,
+      Some('6') => Rank::R6,
+      Some('7') => Rank::R7,
+      Some('8') => Rank::R8,
+      _ => return Err(format!("Invalid square: {}", algebraic)),
+    };
+    if chars.next().is_some() {
+      return Err(format!("Invalid square: {}", algebraic));
+    }
+    Ok(Self::from_file_rank(file, rank))
+  }
+
   pub fn algebraic(self) -> String {
-    let file = match file(self) {
+    let file = match self.file() {
       File::A => 'a',
       File::B => 'b',
       File::C => 'c',
@@ -77,7 +128,7 @@ impl Square {
       File::G => 'g',
       File::H => 'h',
     };
-    let rank = match rank(self) {
+    let rank = match self.rank() {
       Rank::R1 => '1',
       Rank::R2 => '2',
       Rank::R3 => '3',
@@ -91,98 +142,47 @@ impl Square {
   }
 }
 
-pub fn to_square(file: File, rank: Rank) -> Square {
-  let index = 8 * (rank as i32) + (file as i32);
-  debug_assert!(index < (Square::NumSquares as i32));
-  unsafe { Square::from_unchecked(index) }
-}
-
-pub fn file(square: Square) -> File {
-  let index = (square as i32) % 8;
-  debug_assert!(index >= (File::A as i32) && index <= (File::H as i32));
-  unsafe { File::from_unchecked(index) }
-}
-
-pub fn rank(square: Square) -> Rank {
-  let index = (square as i32) / 8;
-  debug_assert!(index >= (Rank::R1 as i32) && index <= (Rank::R8 as i32));
-  unsafe { Rank::from_unchecked(index) }
-}
-
-pub fn parse(algebraic: &str) -> Result<Square, String> {
-  if algebraic.len() > 2 {
-    return Err(format!("Invalid square: {}", algebraic));
-  }
-  let mut chars = algebraic.chars();
-  let file = match chars.next() {
-    Some('a') => File::A,
-    Some('b') => File::B,
-    Some('c') => File::C,
-    Some('d') => File::D,
-    Some('e') => File::E,
-    Some('f') => File::F,
-    Some('g') => File::G,
-    Some('h') => File::H,
-    _ => return Err(format!("Invalid square: {}", algebraic)),
-  };
-  let rank = match chars.next() {
-    Some('1') => Rank::R1,
-    Some('2') => Rank::R2,
-    Some('3') => Rank::R3,
-    Some('4') => Rank::R4,
-    Some('5') => Rank::R5,
-    Some('6') => Rank::R6,
-    Some('7') => Rank::R7,
-    Some('8') => Rank::R8,
-    _ => return Err(format!("Invalid square: {}", algebraic)),
-  };
-  if chars.next().is_some() {
-    return Err(format!("Invalid square: {}", algebraic));
-  }
-  Ok(to_square(file, rank))
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
   fn test_to_square() {
-    assert_eq!(Square::A1, to_square(File::A, Rank::R1));
-    assert_eq!(Square::A8, to_square(File::A, Rank::R8));
-    assert_eq!(Square::H1, to_square(File::H, Rank::R1));
-    assert_eq!(Square::H8, to_square(File::H, Rank::R8));
-    assert_eq!(Square::E3, to_square(File::E, Rank::R3));
-    assert_eq!(Square::F7, to_square(File::F, Rank::R7));
+    assert_eq!(Square::A1, Square::from_file_rank(File::A, Rank::R1));
+    assert_eq!(Square::A8, Square::from_file_rank(File::A, Rank::R8));
+    assert_eq!(Square::H1, Square::from_file_rank(File::H, Rank::R1));
+    assert_eq!(Square::H8, Square::from_file_rank(File::H, Rank::R8));
+    assert_eq!(Square::E3, Square::from_file_rank(File::E, Rank::R3));
+    assert_eq!(Square::F7, Square::from_file_rank(File::F, Rank::R7));
   }
 
   #[test]
   fn test_file() {
-    assert_eq!(File::A, file(Square::A1));
-    assert_eq!(File::A, file(Square::A8));
-    assert_eq!(File::H, file(Square::H1));
-    assert_eq!(File::H, file(Square::H1));
-    assert_eq!(File::E, file(Square::E3));
-    assert_eq!(File::F, file(Square::F7));
+    assert_eq!(File::A, Square::A1.file());
+    assert_eq!(File::A, Square::A8.file());
+    assert_eq!(File::H, Square::H1.file());
+    assert_eq!(File::H, Square::H1.file());
+    assert_eq!(File::E, Square::E3.file());
+    assert_eq!(File::F, Square::F7.file());
   }
 
   #[test]
   fn test_rank() {
-    assert_eq!(Rank::R1, rank(Square::A1));
-    assert_eq!(Rank::R8, rank(Square::A8));
-    assert_eq!(Rank::R1, rank(Square::H1));
-    assert_eq!(Rank::R8, rank(Square::H8));
-    assert_eq!(Rank::R3, rank(Square::E3));
-    assert_eq!(Rank::R7, rank(Square::F7));
+    assert_eq!(Rank::R1, Square::A1.rank());
+    assert_eq!(Rank::R8, Square::A8.rank());
+    assert_eq!(Rank::R1, Square::H1.rank());
+    assert_eq!(Rank::R8, Square::H8.rank());
+    assert_eq!(Rank::R3, Square::E3.rank());
+    assert_eq!(Rank::R7, Square::F7.rank());
   }
 
   #[test]
   fn test_parse() {
-    assert_eq!(Square::A1, parse("a1").unwrap());
-    assert_eq!(Square::A8, parse("a8").unwrap());
-    assert_eq!(Square::H1, parse("h1").unwrap());
-    assert_eq!(Square::H8, parse("h8").unwrap());
-    assert_eq!(Square::E3, parse("e3").unwrap());
-    assert_eq!(Square::F7, parse("f7").unwrap());
+    assert_eq!(Square::A1, Square::parse_algebraic("a1").unwrap());
+    assert_eq!(Square::A8, Square::parse_algebraic("a8").unwrap());
+    assert_eq!(Square::H1, Square::parse_algebraic("h1").unwrap());
+    assert_eq!(Square::H8, Square::parse_algebraic("h8").unwrap());
+    assert_eq!(Square::E3, Square::parse_algebraic("e3").unwrap());
+    assert_eq!(Square::F7, Square::parse_algebraic("f7").unwrap());
   }
 }

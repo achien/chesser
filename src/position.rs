@@ -137,7 +137,7 @@ impl Position {
           skip -= 1;
           continue;
         }
-        let square = to_square(*file, *rank);
+        let square = Square::from_file_rank(*file, *rank);
         let piece_or_digit =
           piece_iter.next().ok_or(ParseError::TooFewPieces)?;
         if piece_or_digit.is_ascii_digit() {
@@ -196,7 +196,7 @@ impl Position {
 
     let en_passant_target = tokens.next().ok_or(ParseError::TooFewTokens)?;
     if en_passant_target != "-" {
-      match parse(en_passant_target) {
+      match Square::parse_algebraic(en_passant_target) {
         Ok(s) => builder.en_passant_target(s),
         Err(_) => return Err(ParseError::InvalidEnPassantTarget),
       };
