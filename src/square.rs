@@ -17,7 +17,8 @@ pub enum Square {
   Nil,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, UnsafeFromPrimitive)]
+#[repr(i32)]
 pub enum Rank {
   R1,
   R2,
@@ -40,7 +41,8 @@ pub const RANKS: [Rank; 8] = [
   Rank::R8,
 ];
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, UnsafeFromPrimitive)]
+#[repr(i32)]
 pub enum File {
   A,
   B,
@@ -63,10 +65,48 @@ pub const FILES: [File; 8] = [
   File::H,
 ];
 
+impl Square {
+  pub fn algebraic(self) -> String {
+    let file = match file(self) {
+      File::A => 'a',
+      File::B => 'b',
+      File::C => 'c',
+      File::D => 'd',
+      File::E => 'e',
+      File::F => 'f',
+      File::G => 'g',
+      File::H => 'h',
+    };
+    let rank = match rank(self) {
+      Rank::R1 => '1',
+      Rank::R2 => '2',
+      Rank::R3 => '3',
+      Rank::R4 => '4',
+      Rank::R5 => '5',
+      Rank::R6 => '6',
+      Rank::R7 => '7',
+      Rank::R8 => '8',
+    };
+    format!("{}{}", file, rank)
+  }
+}
+
 pub fn to_square(file: File, rank: Rank) -> Square {
   let index = 8 * (rank as i32) + (file as i32);
   debug_assert!(index < (Square::NumSquares as i32));
   unsafe { Square::from_unchecked(index) }
+}
+
+pub fn file(square: Square) -> File {
+  let index = (square as i32) % 8;
+  debug_assert!(index >= (File::A as i32) && index <= (File::H as i32));
+  unsafe { File::from_unchecked(index) }
+}
+
+pub fn rank(square: Square) -> Rank {
+  let index = (square as i32) / 8;
+  debug_assert!(index >= (Rank::R1 as i32) && index <= (Rank::R8 as i32));
+  unsafe { Rank::from_unchecked(index) }
 }
 
 pub fn parse(algebraic: &str) -> Result<Square, String> {
@@ -114,6 +154,26 @@ mod tests {
     assert_eq!(Square::H8, to_square(File::H, Rank::R8));
     assert_eq!(Square::E3, to_square(File::E, Rank::R3));
     assert_eq!(Square::F7, to_square(File::F, Rank::R7));
+  }
+
+  #[test]
+  fn test_file() {
+    assert_eq!(File::A, file(Square::A1));
+    assert_eq!(File::A, file(Square::A8));
+    assert_eq!(File::H, file(Square::H1));
+    assert_eq!(File::H, file(Square::H1));
+    assert_eq!(File::E, file(Square::E3));
+    assert_eq!(File::F, file(Square::F7));
+  }
+
+  #[test]
+  fn test_rank() {
+    assert_eq!(Rank::R1, rank(Square::A1));
+    assert_eq!(Rank::R8, rank(Square::A8));
+    assert_eq!(Rank::R1, rank(Square::H1));
+    assert_eq!(Rank::R8, rank(Square::H8));
+    assert_eq!(Rank::R3, rank(Square::E3));
+    assert_eq!(Rank::R7, rank(Square::F7));
   }
 
   #[test]

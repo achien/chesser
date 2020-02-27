@@ -1,31 +1,8 @@
-use crate::board::*;
+use crate::piece::*;
+use crate::square::*;
 use std::fmt;
 
-#[allow(dead_code)]
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Color {
-  White,
-  Black,
-
-  NumColors,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Piece {
-  WhitePawn,
-  BlackPawn,
-  Knight,
-  Bishop,
-  Rook,
-  Queen,
-  King,
-
-  NumPieces,
-  Nil,
-}
-
-const STARTING_POSITION: &str =
+const STARTPOS_FEN: &str =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 #[derive(Debug, PartialEq)]
@@ -45,8 +22,8 @@ pub enum ParseError {
 pub struct PositionBuilder {
   squares: [(Piece, Color); Square::NumSquares as usize],
   side_to_move: Color,
-  castle_a: [bool; Color::NumColors as usize],
-  castle_h: [bool; Color::NumColors as usize],
+  castle_k: [bool; Color::NumColors as usize],
+  castle_q: [bool; Color::NumColors as usize],
   en_passant_target: Square,
   halfmove_clock: i32,
   fullmove_count: i32,
@@ -64,8 +41,8 @@ impl PositionBuilder {
     Self {
       squares: [empty_square; Square::NumSquares as usize],
       side_to_move: Color::White,
-      castle_a: [false; Color::NumColors as usize],
-      castle_h: [false; Color::NumColors as usize],
+      castle_k: [false; Color::NumColors as usize],
+      castle_q: [false; Color::NumColors as usize],
       en_passant_target: Square::Nil,
       halfmove_clock: 0,
       fullmove_count: 0,
@@ -87,13 +64,13 @@ impl PositionBuilder {
     self
   }
 
-  pub fn castle_a(&mut self, color: Color, can_castle: bool) -> &mut Self {
-    self.castle_a[color as usize] = can_castle;
+  pub fn castle_k(&mut self, color: Color, can_castle: bool) -> &mut Self {
+    self.castle_k[color as usize] = can_castle;
     self
   }
 
-  pub fn castle_h(&mut self, color: Color, can_castle: bool) -> &mut Self {
-    self.castle_h[color as usize] = can_castle;
+  pub fn castle_q(&mut self, color: Color, can_castle: bool) -> &mut Self {
+    self.castle_q[color as usize] = can_castle;
     self
   }
 
@@ -116,8 +93,8 @@ impl PositionBuilder {
     Position {
       squares: self.squares,
       side_to_move: self.side_to_move,
-      castle_a: self.castle_a,
-      castle_h: self.castle_h,
+      castle_k: self.castle_k,
+      castle_q: self.castle_q,
       en_passant_target: self.en_passant_target,
       halfmove_clock: self.halfmove_clock,
       fullmove_count: self.fullmove_count,
@@ -128,8 +105,8 @@ impl PositionBuilder {
 pub struct Position {
   squares: [(Piece, Color); Square::NumSquares as usize],
   side_to_move: Color,
-  castle_a: [bool; Color::NumColors as usize],
-  castle_h: [bool; Color::NumColors as usize],
+  castle_k: [bool; Color::NumColors as usize],
+  castle_q: [bool; Color::NumColors as usize],
   en_passant_target: Square,
   halfmove_clock: i32,
   fullmove_count: i32,
@@ -143,7 +120,7 @@ impl fmt::Debug for Position {
 
 impl Position {
   pub fn startpos() -> Self {
-    Self::from_fen(STARTING_POSITION).unwrap()
+    Self::from_fen(STARTPOS_FEN).unwrap()
   }
 
   pub fn from_fen(fen: &str) -> Result<Self, ParseError> {
@@ -208,10 +185,10 @@ impl Position {
     let castling_rights = tokens.next().ok_or(ParseError::TooFewTokens)?;
     for c in castling_rights.chars() {
       match c {
-        'k' => builder.castle_h(Color::Black, true),
-        'K' => builder.castle_h(Color::White, true),
-        'q' => builder.castle_a(Color::Black, true),
-        'Q' => builder.castle_a(Color::White, true),
+        'k' => builder.castle_k(Color::Black, true),
+        'K' => builder.castle_k(Color::White, true),
+        'q' => builder.castle_q(Color::Black, true),
+        'Q' => builder.castle_q(Color::White, true),
         '-' => &mut builder,
         _ => return Err(ParseError::InvalidCastlingRights),
       };
@@ -251,12 +228,12 @@ impl Position {
     self.side_to_move
   }
 
-  pub fn castle_a(&self, color: Color) -> bool {
-    self.castle_a[color as usize]
+  pub fn castle_k(&self, color: Color) -> bool {
+    self.castle_k[color as usize]
   }
 
-  pub fn castle_h(&self, color: Color) -> bool {
-    self.castle_h[color as usize]
+  pub fn castle_q(&self, color: Color) -> bool {
+    self.castle_q[color as usize]
   }
 
   pub fn en_passant_target(&self) -> Square {
@@ -334,10 +311,10 @@ mod tests {
 
     assert_eq!(Color::White, pos.side_to_move());
 
-    assert_eq!(true, pos.castle_a(Color::White));
-    assert_eq!(true, pos.castle_h(Color::White));
-    assert_eq!(true, pos.castle_a(Color::Black));
-    assert_eq!(true, pos.castle_h(Color::Black));
+    assert_eq!(true, pos.castle_k(Color::White));
+    assert_eq!(true, pos.castle_q(Color::White));
+    assert_eq!(true, pos.castle_k(Color::Black));
+    assert_eq!(true, pos.castle_q(Color::Black));
 
     assert_eq!(Square::Nil, pos.en_passant_target());
 
@@ -361,22 +338,22 @@ mod tests {
   #[test]
   fn test_parse_castling() {
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w - - 0 0").unwrap();
-    assert_eq!(false, pos.castle_a(Color::White));
-    assert_eq!(false, pos.castle_a(Color::Black));
-    assert_eq!(false, pos.castle_h(Color::White));
-    assert_eq!(false, pos.castle_h(Color::Black));
+    assert_eq!(false, pos.castle_k(Color::White));
+    assert_eq!(false, pos.castle_q(Color::White));
+    assert_eq!(false, pos.castle_k(Color::Black));
+    assert_eq!(false, pos.castle_q(Color::Black));
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w kK - 0 0").unwrap();
-    assert_eq!(false, pos.castle_a(Color::White));
-    assert_eq!(false, pos.castle_a(Color::Black));
-    assert_eq!(true, pos.castle_h(Color::White));
-    assert_eq!(true, pos.castle_h(Color::Black));
+    assert_eq!(true, pos.castle_k(Color::White));
+    assert_eq!(false, pos.castle_q(Color::White));
+    assert_eq!(true, pos.castle_k(Color::Black));
+    assert_eq!(false, pos.castle_q(Color::Black));
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w qQ - 0 0").unwrap();
-    assert_eq!(true, pos.castle_a(Color::White));
-    assert_eq!(true, pos.castle_a(Color::Black));
-    assert_eq!(false, pos.castle_h(Color::White));
-    assert_eq!(false, pos.castle_h(Color::Black));
+    assert_eq!(false, pos.castle_k(Color::White));
+    assert_eq!(true, pos.castle_q(Color::White));
+    assert_eq!(false, pos.castle_k(Color::Black));
+    assert_eq!(true, pos.castle_q(Color::Black));
   }
 
   #[test]
