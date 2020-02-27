@@ -38,6 +38,8 @@ pub enum ParseError {
   InvalidSideToMove,
   InvalidCastlingRights,
   InvalidEnPassantTarget,
+  InvalidHalfmoveClock,
+  InvalidFullmoveCount,
 }
 
 pub struct PositionBuilder {
@@ -46,6 +48,8 @@ pub struct PositionBuilder {
   castle_a: [bool; Color::NumColors as usize],
   castle_h: [bool; Color::NumColors as usize],
   en_passant_target: Square,
+  halfmove_clock: i32,
+  fullmove_count: i32,
 }
 
 impl Default for PositionBuilder {
@@ -63,6 +67,8 @@ impl PositionBuilder {
       castle_a: [false; Color::NumColors as usize],
       castle_h: [false; Color::NumColors as usize],
       en_passant_target: Square::Nil,
+      halfmove_clock: 0,
+      fullmove_count: 0,
     }
   }
 
@@ -96,6 +102,16 @@ impl PositionBuilder {
     self
   }
 
+  pub fn halfmove_clock(&mut self, clock: i32) -> &mut Self {
+    self.halfmove_clock = clock;
+    self
+  }
+
+  pub fn fullmove_count(&mut self, count: i32) -> &mut Self {
+    self.fullmove_count = count;
+    self
+  }
+
   pub fn build(&self) -> Position {
     Position {
       squares: self.squares,
@@ -103,6 +119,8 @@ impl PositionBuilder {
       castle_a: self.castle_a,
       castle_h: self.castle_h,
       en_passant_target: self.en_passant_target,
+      halfmove_clock: self.halfmove_clock,
+      fullmove_count: self.fullmove_count,
     }
   }
 }
@@ -113,6 +131,8 @@ pub struct Position {
   castle_a: [bool; Color::NumColors as usize],
   castle_h: [bool; Color::NumColors as usize],
   en_passant_target: Square,
+  halfmove_clock: i32,
+  fullmove_count: i32,
 }
 
 impl fmt::Debug for Position {
@@ -206,7 +226,16 @@ impl Position {
     }
 
     let halfmove_clock = tokens.next().ok_or(ParseError::TooFewTokens)?;
-    let fullmove_clock = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    match halfmove_clock.parse::<i32>() {
+      Ok(val) => builder.halfmove_clock(val),
+      Err(_) => return Err(ParseError::InvalidHalfmoveClock),
+    };
+
+    let fullmove_count = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    match fullmove_count.parse::<i32>() {
+      Ok(val) => builder.fullmove_count(val),
+      Err(_) => return Err(ParseError::InvalidFullmoveCount),
+    };
 
     if tokens.next().is_some() {
       return Err(ParseError::TooManyTokens);
@@ -232,6 +261,14 @@ impl Position {
 
   pub fn en_passant_target(&self) -> Square {
     self.en_passant_target
+  }
+
+  pub fn halfmove_clock(&self) -> i32 {
+    self.halfmove_clock
+  }
+
+  pub fn fullmove_count(&self) -> i32 {
+    self.fullmove_count
   }
 }
 
@@ -303,6 +340,10 @@ mod tests {
     assert_eq!(true, pos.castle_h(Color::Black));
 
     assert_eq!(Square::Nil, pos.en_passant_target());
+
+    assert_eq!(0, pos.halfmove_clock());
+
+    assert_eq!(1, pos.fullmove_count());
   }
 
   #[test]
@@ -342,5 +383,17 @@ mod tests {
   fn test_en_passant_target() {
     let pos = Position::from_fen("8/8/8/8/4P3/8/8/8 w - f3 0 0").unwrap();
     assert_eq!(Square::F3, pos.en_passant_target());
+  }
+
+  #[test]
+  fn test_halfmove_clock() {
+    let pos = Position::from_fen("8/8/8/8/4P3/8/8/8 w - - 13 0").unwrap();
+    assert_eq!(13, pos.halfmove_clock());
+  }
+
+  #[test]
+  fn test_fullmove_count() {
+    let pos = Position::from_fen("8/8/8/8/4P3/8/8/8 w - - 0 13").unwrap();
+    assert_eq!(13, pos.fullmove_count());
   }
 }
