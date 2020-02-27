@@ -37,6 +37,7 @@ pub enum ParseError {
   InvalidPiece,
   InvalidSideToMove,
   InvalidCastlingRights,
+  InvalidEnPassantTarget,
 }
 
 pub struct PositionBuilder {
@@ -44,6 +45,7 @@ pub struct PositionBuilder {
   side_to_move: Color,
   castle_a: [bool; Color::NumColors as usize],
   castle_h: [bool; Color::NumColors as usize],
+  en_passant_target: Square,
 }
 
 impl Default for PositionBuilder {
@@ -60,6 +62,7 @@ impl PositionBuilder {
       side_to_move: Color::White,
       castle_a: [false; Color::NumColors as usize],
       castle_h: [false; Color::NumColors as usize],
+      en_passant_target: Square::Nil,
     }
   }
 
@@ -88,12 +91,18 @@ impl PositionBuilder {
     self
   }
 
+  pub fn en_passant_target(&mut self, square: Square) -> &mut Self {
+    self.en_passant_target = square;
+    self
+  }
+
   pub fn build(&self) -> Position {
     Position {
       squares: self.squares,
       side_to_move: self.side_to_move,
       castle_a: self.castle_a,
       castle_h: self.castle_h,
+      en_passant_target: self.en_passant_target,
     }
   }
 }
@@ -103,6 +112,7 @@ pub struct Position {
   side_to_move: Color,
   castle_a: [bool; Color::NumColors as usize],
   castle_h: [bool; Color::NumColors as usize],
+  en_passant_target: Square,
 }
 
 impl fmt::Debug for Position {
@@ -188,6 +198,13 @@ impl Position {
     }
 
     let en_passant_target = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    if en_passant_target != "-" {
+      match parse(en_passant_target) {
+        Ok(s) => builder.en_passant_target(s),
+        Err(_) => return Err(ParseError::InvalidEnPassantTarget),
+      };
+    }
+
     let halfmove_clock = tokens.next().ok_or(ParseError::TooFewTokens)?;
     let fullmove_clock = tokens.next().ok_or(ParseError::TooFewTokens)?;
 
@@ -211,6 +228,10 @@ impl Position {
 
   pub fn castle_h(&self, color: Color) -> bool {
     self.castle_h[color as usize]
+  }
+
+  pub fn en_passant_target(&self) -> Square {
+    self.en_passant_target
   }
 }
 
@@ -280,6 +301,8 @@ mod tests {
     assert_eq!(true, pos.castle_h(Color::White));
     assert_eq!(true, pos.castle_a(Color::Black));
     assert_eq!(true, pos.castle_h(Color::Black));
+
+    assert_eq!(Square::Nil, pos.en_passant_target());
   }
 
   #[test]
@@ -313,5 +336,11 @@ mod tests {
     assert_eq!(true, pos.castle_a(Color::Black));
     assert_eq!(false, pos.castle_h(Color::White));
     assert_eq!(false, pos.castle_h(Color::Black));
+  }
+
+  #[test]
+  fn test_en_passant_target() {
+    let pos = Position::from_fen("8/8/8/8/4P3/8/8/8 w - f3 0 0").unwrap();
+    assert_eq!(Square::F3, pos.en_passant_target());
   }
 }

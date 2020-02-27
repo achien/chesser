@@ -69,6 +69,39 @@ pub fn to_square(file: File, rank: Rank) -> Square {
   unsafe { Square::from_unchecked(index) }
 }
 
+pub fn parse(algebraic: &str) -> Result<Square, String> {
+  if algebraic.len() > 2 {
+    return Err(format!("Invalid square: {}", algebraic));
+  }
+  let mut chars = algebraic.chars();
+  let file = match chars.next() {
+    Some('a') => File::A,
+    Some('b') => File::B,
+    Some('c') => File::C,
+    Some('d') => File::D,
+    Some('e') => File::E,
+    Some('f') => File::F,
+    Some('g') => File::G,
+    Some('h') => File::H,
+    _ => return Err(format!("Invalid square: {}", algebraic)),
+  };
+  let rank = match chars.next() {
+    Some('1') => Rank::R1,
+    Some('2') => Rank::R2,
+    Some('3') => Rank::R3,
+    Some('4') => Rank::R4,
+    Some('5') => Rank::R5,
+    Some('6') => Rank::R6,
+    Some('7') => Rank::R7,
+    Some('8') => Rank::R8,
+    _ => return Err(format!("Invalid square: {}", algebraic)),
+  };
+  if chars.next().is_some() {
+    return Err(format!("Invalid square: {}", algebraic));
+  }
+  Ok(to_square(file, rank))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -81,5 +114,15 @@ mod tests {
     assert_eq!(Square::H8, to_square(File::H, Rank::R8));
     assert_eq!(Square::E3, to_square(File::E, Rank::R3));
     assert_eq!(Square::F7, to_square(File::F, Rank::R7));
+  }
+
+  #[test]
+  fn test_parse() {
+    assert_eq!(Square::A1, parse("a1").unwrap());
+    assert_eq!(Square::A8, parse("a8").unwrap());
+    assert_eq!(Square::H1, parse("h1").unwrap());
+    assert_eq!(Square::H8, parse("h8").unwrap());
+    assert_eq!(Square::E3, parse("e3").unwrap());
+    assert_eq!(Square::F7, parse("f7").unwrap());
   }
 }
