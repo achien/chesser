@@ -1,10 +1,13 @@
 use crate::board::*;
+use std::fmt;
 
 #[allow(dead_code)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Color {
   White,
   Black,
+
+  NumColors,
 }
 
 #[allow(dead_code)]
@@ -25,17 +28,22 @@ pub enum Piece {
 const STARTING_POSITION: &str =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ParseError {
   TooFewTokens,
   TooManyTokens,
   TooFewPieces,
   TooManyPieces,
   InvalidPiece,
+  InvalidSideToMove,
+  InvalidCastlingRights,
 }
 
 pub struct PositionBuilder {
   squares: [(Piece, Color); Square::NumSquares as usize],
+  side_to_move: Color,
+  castle_a: [bool; Color::NumColors as usize],
+  castle_h: [bool; Color::NumColors as usize],
 }
 
 impl Default for PositionBuilder {
@@ -49,6 +57,9 @@ impl PositionBuilder {
     let empty_square = (Piece::Nil, Color::White);
     Self {
       squares: [empty_square; Square::NumSquares as usize],
+      side_to_move: Color::White,
+      castle_a: [false; Color::NumColors as usize],
+      castle_h: [false; Color::NumColors as usize],
     }
   }
 
@@ -62,18 +73,49 @@ impl PositionBuilder {
     self
   }
 
+  pub fn side_to_move(&mut self, color: Color) -> &mut Self {
+    self.side_to_move = color;
+    self
+  }
+
+  pub fn castle_a(&mut self, color: Color, can_castle: bool) -> &mut Self {
+    self.castle_a[color as usize] = can_castle;
+    self
+  }
+
+  pub fn castle_h(&mut self, color: Color, can_castle: bool) -> &mut Self {
+    self.castle_h[color as usize] = can_castle;
+    self
+  }
+
   pub fn build(&self) -> Position {
     Position {
       squares: self.squares,
+      side_to_move: self.side_to_move,
+      castle_a: self.castle_a,
+      castle_h: self.castle_h,
     }
   }
 }
 
 pub struct Position {
   squares: [(Piece, Color); Square::NumSquares as usize],
+  side_to_move: Color,
+  castle_a: [bool; Color::NumColors as usize],
+  castle_h: [bool; Color::NumColors as usize],
+}
+
+impl fmt::Debug for Position {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "position")
+  }
 }
 
 impl Position {
+  pub fn startpos() -> Self {
+    Self::from_fen(STARTING_POSITION).unwrap()
+  }
+
   pub fn from_fen(fen: &str) -> Result<Self, ParseError> {
     let mut builder = PositionBuilder::new();
     let mut tokens = fen.split_whitespace();
@@ -127,7 +169,24 @@ impl Position {
     }
 
     let side_to_move = tokens.next().ok_or(ParseError::TooFewTokens)?;
-    let castling = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    match side_to_move {
+      "w" => builder.side_to_move(Color::White),
+      "b" => builder.side_to_move(Color::Black),
+      _ => return Err(ParseError::InvalidSideToMove),
+    };
+
+    let castling_rights = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    for c in castling_rights.chars() {
+      match c {
+        'k' => builder.castle_h(Color::Black, true),
+        'K' => builder.castle_h(Color::White, true),
+        'q' => builder.castle_a(Color::Black, true),
+        'Q' => builder.castle_a(Color::White, true),
+        '-' => &mut builder,
+        _ => return Err(ParseError::InvalidCastlingRights),
+      };
+    }
+
     let en_passant_target = tokens.next().ok_or(ParseError::TooFewTokens)?;
     let halfmove_clock = tokens.next().ok_or(ParseError::TooFewTokens)?;
     let fullmove_clock = tokens.next().ok_or(ParseError::TooFewTokens)?;
@@ -140,6 +199,18 @@ impl Position {
 
   pub fn at(&self, square: Square) -> (Piece, Color) {
     self.squares[square as usize]
+  }
+
+  pub fn side_to_move(&self) -> Color {
+    self.side_to_move
+  }
+
+  pub fn castle_a(&self, color: Color) -> bool {
+    self.castle_a[color as usize]
+  }
+
+  pub fn castle_h(&self, color: Color) -> bool {
+    self.castle_h[color as usize]
   }
 }
 
@@ -167,7 +238,7 @@ mod tests {
 
   #[test]
   fn test_starting_position() {
-    let pos = Position::from_fen(STARTING_POSITION).unwrap();
+    let pos = Position::startpos();
 
     assert_eq!((Piece::Rook, Color::White), pos.at(Square::A1));
     assert_eq!((Piece::Knight, Color::White), pos.at(Square::B1));
@@ -202,5 +273,45 @@ mod tests {
     assert_eq!((Piece::BlackPawn, Color::Black), pos.at(Square::F7));
     assert_eq!((Piece::BlackPawn, Color::Black), pos.at(Square::G7));
     assert_eq!((Piece::BlackPawn, Color::Black), pos.at(Square::H7));
+
+    assert_eq!(Color::White, pos.side_to_move());
+
+    assert_eq!(true, pos.castle_a(Color::White));
+    assert_eq!(true, pos.castle_h(Color::White));
+    assert_eq!(true, pos.castle_a(Color::Black));
+    assert_eq!(true, pos.castle_h(Color::Black));
+  }
+
+  #[test]
+  fn test_parse_side_to_move() {
+    let pos = Position::from_fen("8/8/8/8/8/8/8/8 w - - 0 0").unwrap();
+    assert_eq!(Color::White, pos.side_to_move());
+
+    let pos = Position::from_fen("8/8/8/8/8/8/8/8 b - - 0 0").unwrap();
+    assert_eq!(Color::Black, pos.side_to_move());
+
+    let pos = Position::from_fen("8/8/8/8/8/8/8/8 W - - 0 0");
+    assert_eq!(ParseError::InvalidSideToMove, pos.unwrap_err());
+  }
+
+  #[test]
+  fn test_parse_castling() {
+    let pos = Position::from_fen("8/8/8/8/8/8/8/8 w - - 0 0").unwrap();
+    assert_eq!(false, pos.castle_a(Color::White));
+    assert_eq!(false, pos.castle_a(Color::Black));
+    assert_eq!(false, pos.castle_h(Color::White));
+    assert_eq!(false, pos.castle_h(Color::Black));
+
+    let pos = Position::from_fen("8/8/8/8/8/8/8/8 w kK - 0 0").unwrap();
+    assert_eq!(false, pos.castle_a(Color::White));
+    assert_eq!(false, pos.castle_a(Color::Black));
+    assert_eq!(true, pos.castle_h(Color::White));
+    assert_eq!(true, pos.castle_h(Color::Black));
+
+    let pos = Position::from_fen("8/8/8/8/8/8/8/8 w qQ - 0 0").unwrap();
+    assert_eq!(true, pos.castle_a(Color::White));
+    assert_eq!(true, pos.castle_a(Color::Black));
+    assert_eq!(false, pos.castle_h(Color::White));
+    assert_eq!(false, pos.castle_h(Color::Black));
   }
 }

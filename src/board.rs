@@ -1,4 +1,4 @@
-use num_enum::{TryFromPrimitive, UnsafeFromPrimitive};
+use num_enum::UnsafeFromPrimitive;
 
 #[rustfmt::skip]
 #[derive(Debug, Copy, Clone, PartialEq, UnsafeFromPrimitive)]
