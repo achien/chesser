@@ -1,3 +1,4 @@
+use chessier::move_generation::MoveGenerator;
 use chessier::position::*;
 use std::io::{self, Write};
 use std::str::SplitWhitespace;
@@ -71,7 +72,7 @@ fn main() {
             Some("go") => match &position {
                 None => eprintln!("no position provided before 'go'"),
                 Some(pos) => {
-                    let moves = pos.moves();
+                    let moves = MoveGenerator::new().moves(&pos);
                     let first_move = moves.iter().next();
                     match first_move {
                         Some(m) => println!("bestmove {}", m.long_algebraic()),
