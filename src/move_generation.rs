@@ -301,6 +301,14 @@ impl MoveGenerator {
               });
             }
           }
+        } else if let Some(ep_target) = position.en_passant_target() {
+          if to == ep_target && to_piece == Piece::Nil {
+            moves.push(Move {
+              kind: MoveKind::EnPassantCapture,
+              from,
+              to,
+            });
+          }
         }
       }
     }
@@ -897,5 +905,84 @@ mod tests {
       .build();
     let moves = MoveGenerator::new().moves(&position);
     assert_targets(&[], &moves);
+  }
+
+  #[test]
+  fn test_en_passant_white() {
+    let mut builder = PositionBuilder::new();
+    builder
+      .place(Square::B5, Piece::WhitePawn, Color::White)
+      .place(Square::C5, Piece::BlackPawn, Color::Black)
+      .en_passant_target(Some(Square::C6));
+    let moves = MoveGenerator::new().moves(&builder.build());
+    assert_eq!(2, moves.len(), "moves={:?}", moves);
+    assert_eq!(
+      true,
+      moves.contains(&Move {
+        kind: MoveKind::EnPassantCapture,
+        from: Square::B5,
+        to: Square::C6
+      })
+    );
+
+    // Piece on EP target causes normal capture
+    builder.place(Square::C6, Piece::Knight, Color::Black);
+    let moves = MoveGenerator::new().moves(&builder.build());
+    assert_eq!(2, moves.len(), "moves={:?}", moves);
+    assert_moves(
+      &[
+        Move {
+          kind: MoveKind::Move,
+          from: Square::B5,
+          to: Square::B6,
+        },
+        Move {
+          kind: MoveKind::Capture,
+          from: Square::B5,
+          to: Square::C6,
+        },
+      ],
+      &moves,
+    );
+  }
+
+  #[test]
+  fn test_en_passant_black() {
+    let mut builder = PositionBuilder::new();
+    builder
+      .side_to_move(Color::Black)
+      .place(Square::A4, Piece::BlackPawn, Color::Black)
+      .place(Square::B4, Piece::WhitePawn, Color::White)
+      .en_passant_target(Some(Square::B3));
+    let moves = MoveGenerator::new().moves(&builder.build());
+    assert_eq!(2, moves.len(), "moves={:?}", moves);
+    assert_eq!(
+      true,
+      moves.contains(&Move {
+        kind: MoveKind::EnPassantCapture,
+        from: Square::A4,
+        to: Square::B3,
+      })
+    );
+
+    // Piece on EP target causes normal capture
+    builder.place(Square::B3, Piece::Knight, Color::White);
+    let moves = MoveGenerator::new().moves(&builder.build());
+    assert_eq!(2, moves.len(), "moves={:?}", moves);
+    assert_moves(
+      &[
+        Move {
+          kind: MoveKind::Move,
+          from: Square::A4,
+          to: Square::A3,
+        },
+        Move {
+          kind: MoveKind::Capture,
+          from: Square::A4,
+          to: Square::B3,
+        },
+      ],
+      &moves,
+    );
   }
 }
