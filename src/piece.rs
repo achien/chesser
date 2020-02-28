@@ -2,8 +2,6 @@
 pub enum Color {
   White,
   Black,
-
-  NumColors,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -20,10 +20,10 @@ pub enum ParseError {
 }
 
 pub struct PositionBuilder {
-  squares: [(Piece, Color); 64],
+  pieces: Vec<(Square, Piece, Color)>,
   side_to_move: Color,
-  castle_kside: [bool; Color::NumColors as usize],
-  castle_qside: [bool; Color::NumColors as usize],
+  castle_kside: [bool; 2],
+  castle_qside: [bool; 2],
   en_passant_target: Option<Square>,
   halfmove_clock: i32,
   fullmove_count: i32,
@@ -35,14 +35,15 @@ impl Default for PositionBuilder {
   }
 }
 
+const EMPTY_SQUARE: (Piece, Color) = (Piece::Nil, Color::White);
+
 impl PositionBuilder {
   pub fn new() -> Self {
-    let empty_square = (Piece::Nil, Color::White);
     Self {
-      squares: [empty_square; 64],
+      pieces: Vec::new(),
       side_to_move: Color::White,
-      castle_kside: [false; Color::NumColors as usize],
-      castle_qside: [false; Color::NumColors as usize],
+      castle_kside: [false; 2],
+      castle_qside: [false; 2],
       en_passant_target: None,
       halfmove_clock: 0,
       fullmove_count: 0,
@@ -55,7 +56,7 @@ impl PositionBuilder {
     piece: Piece,
     color: Color,
   ) -> &mut Self {
-    self.squares[square as usize] = (piece, color);
+    self.pieces.push((square, piece, color));
     self
   }
 
@@ -90,23 +91,27 @@ impl PositionBuilder {
   }
 
   pub fn build(&self) -> Position {
-    Position {
-      squares: self.squares,
+    let mut position = Position {
+      squares: [EMPTY_SQUARE; 64],
       side_to_move: self.side_to_move,
       castle_kside: self.castle_kside,
       castle_qside: self.castle_qside,
       en_passant_target: self.en_passant_target,
       halfmove_clock: self.halfmove_clock,
       fullmove_count: self.fullmove_count,
+    };
+    for &(square, piece, color) in &self.pieces {
+      position.place(square, piece, color);
     }
+    position
   }
 }
 
 pub struct Position {
   squares: [(Piece, Color); 64],
   side_to_move: Color,
-  castle_kside: [bool; Color::NumColors as usize],
-  castle_qside: [bool; Color::NumColors as usize],
+  castle_kside: [bool; 2],
+  castle_qside: [bool; 2],
   en_passant_target: Option<Square>,
   halfmove_clock: i32,
   fullmove_count: i32,
@@ -247,6 +252,24 @@ impl Position {
 
   pub fn fullmove_count(&self) -> i32 {
     self.fullmove_count
+  }
+
+  fn place(
+    &mut self,
+    square: Square,
+    piece: Piece,
+    color: Color,
+  ) -> &mut Self {
+    debug_assert!(piece != Piece::Nil);
+    debug_assert!(self.at(square) == EMPTY_SQUARE);
+    self.squares[square as usize] = (piece, color);
+    self
+  }
+
+  fn remove(&mut self, square: Square) -> &mut Self {
+    debug_assert!(self.at(square).0 != Piece::Nil);
+    self.squares[square as usize] = EMPTY_SQUARE;
+    self
   }
 }
 
