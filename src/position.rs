@@ -275,20 +275,38 @@ impl Position {
       return;
     }
     match piece {
-      Piece::WhitePawn => self.gen_pawn_captures(
-        moves,
-        from,
-        color,
-        PawnDirection::White,
-        Rank::R8,
-      ),
-      Piece::BlackPawn => self.gen_pawn_captures(
-        moves,
-        from,
-        color,
-        PawnDirection::Black,
-        Rank::R1,
-      ),
+      Piece::WhitePawn => {
+        self.gen_pawn_captures(
+          moves,
+          from,
+          color,
+          PawnDirection::White,
+          Rank::R8,
+        );
+        self.gen_pawn_pushes(
+          moves,
+          from,
+          PawnDirection::White,
+          Rank::R2,
+          Rank::R8,
+        );
+      }
+      Piece::BlackPawn => {
+        self.gen_pawn_captures(
+          moves,
+          from,
+          color,
+          PawnDirection::Black,
+          Rank::R1,
+        );
+        self.gen_pawn_pushes(
+          moves,
+          from,
+          PawnDirection::Black,
+          Rank::R7,
+          Rank::R1,
+        );
+      }
       Piece::Knight => self.gen_knight_moves(moves, from, color),
       Piece::Bishop => {
         self.gen_bishop_moves(moves, from, color, Piece::Bishop)
@@ -494,6 +512,54 @@ impl Position {
       }
     }
   }
+
+  fn gen_pawn_pushes(
+    &self,
+    moves: &mut Vec<Move>,
+    from: Square,
+    direction: PawnDirection,
+    starting_rank: Rank,
+    promotion_rank: Rank,
+  ) {
+    let to = from.offset_rank(direction as i32).unwrap();
+    let (to_piece, _) = self.at(to);
+    if to_piece != Piece::Nil {
+      return;
+    }
+    if to.rank() == promotion_rank {
+      let kinds = &[
+        MoveKind::PromotionKnight,
+        MoveKind::PromotionBishop,
+        MoveKind::PromotionRook,
+        MoveKind::PromotionQueen,
+      ];
+      for kind in kinds {
+        moves.push(Move {
+          kind: *kind,
+          from,
+          to,
+        });
+      }
+    } else {
+      moves.push(Move {
+        kind: MoveKind::Move,
+        from,
+        to,
+      });
+      // If single push succeeds double push might be possible
+      if from.rank() == starting_rank {
+        let to = to.offset_rank(direction as i32).unwrap();
+        let (to_piece, _) = self.at(to);
+        if to_piece == Piece::Nil {
+          moves.push(Move {
+            kind: MoveKind::DoublePawnPush,
+            from,
+            to,
+          });
+        }
+      }
+    }
+  }
 }
 
 #[cfg(test)]
@@ -622,10 +688,21 @@ mod tests {
     assert_eq!(13, pos.fullmove_count());
   }
 
+  fn assert_moves(expected: &[Move], moves: &[Move]) {
+    let expected: BTreeSet<_> = expected.iter().collect();
+    let moves: BTreeSet<_> = moves.iter().collect();
+    assert_eq!(None, expected.symmetric_difference(&moves).next());
+  }
+
   fn assert_targets(expected: &[Square], moves: &[Move]) {
     let expected: BTreeSet<_> = expected.iter().collect();
-    let moves: BTreeSet<_> = moves.iter().map(|m| &m.to).collect();
-    assert_eq!(None, expected.symmetric_difference(&moves).next());
+    let actual: BTreeSet<_> = moves.iter().map(|m| &m.to).collect();
+    assert_eq!(
+      None,
+      expected.symmetric_difference(&actual).next(),
+      "moves={:?}",
+      &moves
+    );
   }
 
   #[test]
@@ -923,6 +1000,7 @@ mod tests {
     let mut moves = Vec::new();
     PositionBuilder::new()
       .place(Square::F3, Piece::WhitePawn, Color::White)
+      .place(Square::F4, Piece::WhitePawn, Color::White)
       .place(Square::G4, Piece::Bishop, Color::Black)
       .place(Square::G2, Piece::Knight, Color::Black)
       .place(Square::E4, Piece::Rook, Color::Black)
@@ -934,20 +1012,22 @@ mod tests {
     let mut moves = Vec::new();
     PositionBuilder::new()
       .place(Square::F3, Piece::WhitePawn, Color::White)
+      .place(Square::F4, Piece::WhitePawn, Color::White)
       .place(Square::G4, Piece::Bishop, Color::White)
       .build()
       .moves_from(&mut moves, Color::White, Square::F3);
     assert_targets(&[], &moves);
 
     // When capturing on promotion, get one move per promotion
-    let moves = PositionBuilder::new()
-      .side_to_move(Color::White)
+    let mut moves = Vec::new();
+    PositionBuilder::new()
       .place(Square::A7, Piece::WhitePawn, Color::White)
+      .place(Square::A8, Piece::Rook, Color::White)
       .place(Square::B8, Piece::Queen, Color::Black)
       .build()
-      .moves();
+      .moves_from(&mut moves, Color::White, Square::A7);
     assert_targets(&[Square::B8], &moves);
-    assert_eq!(4, moves.len());
+    assert_eq!(4, moves.len(), "moves={:?}", &moves);
     let move_kinds: BTreeSet<_> = moves.iter().map(|m| m.kind).collect();
     let mut expected_kinds = BTreeSet::new();
     expected_kinds.insert(MoveKind::PromotionCaptureKnight);
@@ -966,6 +1046,7 @@ mod tests {
     PositionBuilder::new()
       .side_to_move(Color::Black)
       .place(Square::F4, Piece::BlackPawn, Color::Black)
+      .place(Square::F3, Piece::BlackPawn, Color::Black)
       .place(Square::E3, Piece::Bishop, Color::White)
       .place(Square::E5, Piece::Knight, Color::White)
       .place(Square::G3, Piece::Rook, Color::White)
@@ -978,20 +1059,23 @@ mod tests {
     PositionBuilder::new()
       .side_to_move(Color::Black)
       .place(Square::F4, Piece::BlackPawn, Color::Black)
+      .place(Square::F3, Piece::BlackPawn, Color::Black)
       .place(Square::E3, Piece::Bishop, Color::Black)
       .build()
       .moves_from(&mut moves, Color::Black, Square::F4);
     assert_targets(&[], &moves);
 
     // When capturing on promotion, get one move per promotion
-    let moves = PositionBuilder::new()
+    let mut moves = Vec::new();
+    PositionBuilder::new()
       .side_to_move(Color::Black)
       .place(Square::F2, Piece::BlackPawn, Color::Black)
+      .place(Square::F1, Piece::Rook, Color::Black)
       .place(Square::E1, Piece::Queen, Color::White)
       .build()
-      .moves();
+      .moves_from(&mut moves, Color::Black, Square::F2);
     assert_targets(&[Square::E1], &moves);
-    assert_eq!(4, moves.len());
+    assert_eq!(4, moves.len(), "moves={:?}", &moves);
     let move_kinds: BTreeSet<_> = moves.iter().map(|m| m.kind).collect();
     let mut expected_kinds = BTreeSet::new();
     expected_kinds.insert(MoveKind::PromotionCaptureKnight);
@@ -1002,5 +1086,84 @@ mod tests {
       None,
       expected_kinds.symmetric_difference(&move_kinds).next()
     );
+  }
+
+  #[test]
+  fn test_white_pawn_push() {
+    let moves = PositionBuilder::new()
+      .place(Square::E3, Piece::WhitePawn, Color::White)
+      .build()
+      .moves();
+    assert_targets(&[Square::E4], &moves);
+
+    // Double pawn push works and has the right move type
+    let moves = PositionBuilder::new()
+      .place(Square::E2, Piece::WhitePawn, Color::White)
+      .build()
+      .moves();
+    assert_moves(
+      &[
+        Move {
+          kind: MoveKind::Move,
+          from: Square::E2,
+          to: Square::E3,
+        },
+        Move {
+          kind: MoveKind::DoublePawnPush,
+          from: Square::E2,
+          to: Square::E4,
+        },
+      ],
+      &moves,
+    );
+
+    // Double pawn push is blocked if single pawn push is blocked
+    let moves = PositionBuilder::new()
+      .place(Square::E2, Piece::WhitePawn, Color::White)
+      .place(Square::E3, Piece::BlackPawn, Color::Black)
+      .build()
+      .moves();
+    assert_targets(&[], &moves);
+  }
+
+  #[test]
+  fn test_black_pawn_push() {
+    let moves = PositionBuilder::new()
+      .side_to_move(Color::Black)
+      .place(Square::F5, Piece::BlackPawn, Color::Black)
+      .build()
+      .moves();
+    assert_targets(&[Square::F4], &moves);
+
+    // Double pawn push works and has the right move type
+    let moves = PositionBuilder::new()
+      .side_to_move(Color::Black)
+      .place(Square::F7, Piece::BlackPawn, Color::Black)
+      .build()
+      .moves();
+    assert_moves(
+      &[
+        Move {
+          kind: MoveKind::Move,
+          from: Square::F7,
+          to: Square::F6,
+        },
+        Move {
+          kind: MoveKind::DoublePawnPush,
+          from: Square::F7,
+          to: Square::F5,
+        },
+      ],
+      &moves,
+    );
+
+    // Double pawn push is blocked if single pawn push is blocked
+    let moves = PositionBuilder::new()
+      .side_to_move(Color::Black)
+      .place(Square::F7, Piece::BlackPawn, Color::Black)
+      .place(Square::F6, Piece::WhitePawn, Color::White)
+      .build()
+      .moves();
+    assert_targets(&[], &moves);
   }
 }
