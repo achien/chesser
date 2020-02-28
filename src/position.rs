@@ -254,13 +254,28 @@ impl Position {
   pub fn moves(&self) -> Vec<Move> {
     let mut moves: Vec<Move> = Vec::new();
     for square in squares() {
-      let (piece, color) = self.at(square);
-      match piece {
-        Piece::Knight => self.gen_knight_moves(&mut moves, square, color),
-        _ => (),
-      };
+      self.moves_from(&mut moves, square);
     }
     moves
+  }
+
+  fn moves_from(&self, moves: &mut Vec<Move>, from: Square) {
+    let (piece, color) = self.at(from);
+    if color != self.side_to_move() {
+      return;
+    }
+    match piece {
+      Piece::Knight => self.gen_knight_moves(moves, from, color),
+      Piece::Bishop => {
+        self.gen_bishop_moves(moves, from, color, Piece::Bishop)
+      }
+      Piece::Rook => self.gen_rook_moves(moves, from, color, Piece::Rook),
+      Piece::Queen => {
+        self.gen_bishop_moves(moves, from, color, Piece::Queen);
+        self.gen_rook_moves(moves, from, color, Piece::Queen);
+      }
+      _ => (),
+    };
   }
 
   fn gen_knight_moves(
@@ -269,8 +284,7 @@ impl Position {
     from: Square,
     color: Color,
   ) {
-    debug_assert!(self.at(from).0 == Piece::Knight);
-    debug_assert!(self.at(from).1 == color);
+    debug_assert!(self.at(from) == (Piece::Knight, color));
     const OFFSETS: [(i32, i32); 8] = [
       (-2, -1),
       (-2, 1),
@@ -283,13 +297,12 @@ impl Position {
     ];
     for offset in OFFSETS.iter() {
       let (d_file, d_rank) = offset;
-      let to = match from.offset_file(*d_file) {
-        None => None,
-        Some(s) => s.offset_rank(*d_rank),
-      };
+      let to = from
+        .offset_file(*d_file)
+        .and_then(|s| s.offset_rank(*d_rank));
       if let Some(to) = to {
         let (target_piece, target_color) = self.at(to);
-        if let Piece::Nil = target_piece {
+        if target_piece == Piece::Nil {
           moves.push(Move {
             kind: MoveKind::Move,
             from,
@@ -305,6 +318,86 @@ impl Position {
           })
         }
       }
+    }
+  }
+
+  fn gen_bishop_moves(
+    &self,
+    moves: &mut Vec<Move>,
+    from: Square,
+    color: Color,
+    piece: Piece,
+  ) {
+    debug_assert!(self.at(from) == (piece, color));
+    self.gen_ray_moves(moves, from, color, piece, -1, -1);
+    self.gen_ray_moves(moves, from, color, piece, -1, 1);
+    self.gen_ray_moves(moves, from, color, piece, 1, -1);
+    self.gen_ray_moves(moves, from, color, piece, 1, 1);
+  }
+
+  fn gen_rook_moves(
+    &self,
+    moves: &mut Vec<Move>,
+    from: Square,
+    color: Color,
+    piece: Piece,
+  ) {
+    debug_assert!(self.at(from) == (piece, color));
+    self.gen_ray_moves(moves, from, color, piece, -1, 0);
+    self.gen_ray_moves(moves, from, color, piece, 1, 0);
+    self.gen_ray_moves(moves, from, color, piece, 0, -1);
+    self.gen_ray_moves(moves, from, color, piece, 0, 1);
+  }
+
+  fn gen_ray_moves(
+    &self,
+    moves: &mut Vec<Move>,
+    from: Square,
+    color: Color,
+    piece: Piece,
+    d_file: i32,
+    d_rank: i32,
+  ) {
+    debug_assert!(self.at(from) == (piece, color));
+    debug_assert!(d_file.abs() <= 1);
+    debug_assert!(d_rank.abs() <= 1);
+    debug_assert!(d_file != 0 || d_rank != 0);
+    let mut target = Some(from);
+    loop {
+      target = target
+        .unwrap()
+        .offset_file(d_file)
+        .and_then(|s| s.offset_rank(d_rank));
+      match target {
+        // Return if we fell off the edge of the board
+        None => return,
+        Some(to) => {
+          let (target_piece, target_color) = self.at(to);
+          if target_piece == Piece::Nil {
+            // The square is empty, add to list of moves then continue
+            // checking the rest of the ray
+            moves.push(Move {
+              kind: MoveKind::Move,
+              from,
+              to,
+              promotion: Piece::Nil,
+            });
+          } else {
+            // The square is occupied.  If it's occupied by the opponent then
+            // add the capture.  In either case return because there are no
+            // more moves along this ray.
+            if target_color != color {
+              moves.push(Move {
+                kind: MoveKind::Capture,
+                from,
+                to,
+                promotion: Piece::Nil,
+              });
+            }
+            return;
+          }
+        }
+      };
     }
   }
 }
@@ -494,28 +587,31 @@ mod tests {
 
   #[test]
   fn test_knight_move_blocked() {
-    let moves = PositionBuilder::new()
+    let mut moves = Vec::new();
+    PositionBuilder::new()
       .place(Square::A1, Piece::Knight, Color::White)
       .place(Square::B3, Piece::Rook, Color::White)
       .build()
-      .moves();
+      .moves_from(&mut moves, Square::A1);
     assert_targets(&[Square::C2], &moves);
 
-    let moves = PositionBuilder::new()
+    let mut moves = Vec::new();
+    PositionBuilder::new()
       .place(Square::A1, Piece::Knight, Color::White)
       .place(Square::B3, Piece::Rook, Color::White)
       .place(Square::C2, Piece::Rook, Color::White)
       .build()
-      .moves();
+      .moves_from(&mut moves, Square::A1);
     assert_targets(&[], &moves);
 
     // Capture does not block
-    let moves = PositionBuilder::new()
+    let mut moves = Vec::new();
+    PositionBuilder::new()
       .place(Square::A1, Piece::Knight, Color::White)
       .place(Square::B3, Piece::Rook, Color::White)
       .place(Square::C2, Piece::Rook, Color::Black)
       .build()
-      .moves();
+      .moves_from(&mut moves, Square::A1);
     assert_targets(&[Square::C2], &moves);
   }
 
@@ -537,5 +633,161 @@ mod tests {
         assert!(false, "Unexpected move to {:?}", m.to);
       }
     }
+  }
+
+  #[test]
+  fn test_bishop_moves() {
+    let moves = PositionBuilder::new()
+      .place(Square::A1, Piece::Bishop, Color::White)
+      .build()
+      .moves();
+    assert_targets(
+      &[
+        Square::B2,
+        Square::C3,
+        Square::D4,
+        Square::E5,
+        Square::F6,
+        Square::G7,
+        Square::H8,
+      ],
+      &moves,
+    );
+
+    let moves = PositionBuilder::new()
+      .place(Square::E2, Piece::Bishop, Color::White)
+      .build()
+      .moves();
+    assert_targets(
+      &[
+        Square::D1,
+        Square::F3,
+        Square::G4,
+        Square::H5,
+        Square::F1,
+        Square::D3,
+        Square::C4,
+        Square::B5,
+        Square::A6,
+      ],
+      &moves,
+    );
+
+    let mut moves = Vec::new();
+    PositionBuilder::new()
+      .place(Square::E2, Piece::Bishop, Color::White)
+      .place(Square::F3, Piece::Knight, Color::White)
+      .place(Square::C4, Piece::Knight, Color::Black)
+      .build()
+      .moves_from(&mut moves, Square::E2);
+    assert_targets(&[Square::D1, Square::F1, Square::D3, Square::C4], &moves);
+  }
+
+  #[test]
+  fn test_rook_moves() {
+    let moves = PositionBuilder::new()
+      .place(Square::E4, Piece::Rook, Color::White)
+      .build()
+      .moves();
+    assert_targets(
+      &[
+        Square::E1,
+        Square::E2,
+        Square::E3,
+        Square::E5,
+        Square::E6,
+        Square::E7,
+        Square::E8,
+        Square::A4,
+        Square::B4,
+        Square::C4,
+        Square::D4,
+        Square::F4,
+        Square::G4,
+        Square::H4,
+      ],
+      &moves,
+    );
+
+    let mut moves = Vec::new();
+    PositionBuilder::new()
+      .place(Square::E2, Piece::Rook, Color::White)
+      .place(Square::E4, Piece::Knight, Color::White)
+      .place(Square::D2, Piece::Knight, Color::Black)
+      .build()
+      .moves_from(&mut moves, Square::E2);
+    assert_targets(
+      &[
+        Square::E1,
+        Square::E3,
+        Square::D2,
+        Square::F2,
+        Square::G2,
+        Square::H2,
+      ],
+      &moves,
+    );
+  }
+
+  #[test]
+  fn test_queen_moves() {
+    let moves = PositionBuilder::new()
+      .place(Square::F2, Piece::Queen, Color::White)
+      .build()
+      .moves();
+    assert_targets(
+      &[
+        Square::A2,
+        Square::B2,
+        Square::C2,
+        Square::D2,
+        Square::E2,
+        Square::G2,
+        Square::H2,
+        Square::F1,
+        Square::F3,
+        Square::F4,
+        Square::F5,
+        Square::F6,
+        Square::F7,
+        Square::F8,
+        Square::E1,
+        Square::G3,
+        Square::H4,
+        Square::G1,
+        Square::E3,
+        Square::D4,
+        Square::C5,
+        Square::B6,
+        Square::A7,
+      ],
+      &moves,
+    );
+
+    let mut moves = Vec::new();
+    PositionBuilder::new()
+      .place(Square::F2, Piece::Queen, Color::White)
+      .place(Square::E2, Piece::Knight, Color::White)
+      .place(Square::D4, Piece::Knight, Color::Black)
+      .place(Square::F6, Piece::Rook, Color::White)
+      .build()
+      .moves_from(&mut moves, Square::F2);
+    assert_targets(
+      &[
+        Square::G2,
+        Square::H2,
+        Square::F1,
+        Square::F3,
+        Square::F4,
+        Square::F5,
+        Square::E1,
+        Square::G3,
+        Square::H4,
+        Square::G1,
+        Square::E3,
+        Square::D4,
+      ],
+      &moves,
+    );
   }
 }

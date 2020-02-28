@@ -194,6 +194,7 @@ impl Iterator for Squares {
 }
 
 pub fn squares() -> Squares {
+  // (0..64).map(|x| unsafe { Square::from_unchecked(x) })
   Squares { square_num: 0 }
 }
 
