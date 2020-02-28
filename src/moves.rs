@@ -1,13 +1,18 @@
-use crate::piece::*;
 use crate::square::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialOrd, PartialEq)]
 pub enum MoveKind {
   DoublePawnPush,
   CastleK,
   CastleQ,
-  PromotionCapture,
-  Promotion,
+  PromotionCaptureKnight,
+  PromotionCaptureBishop,
+  PromotionCaptureRook,
+  PromotionCaptureQueen,
+  PromotionKnight,
+  PromotionBishop,
+  PromotionRook,
+  PromotionQueen,
   EnPassantCapture,
   Capture,
   Move,
@@ -17,18 +22,20 @@ pub struct Move {
   pub kind: MoveKind,
   pub from: Square,
   pub to: Square,
-  pub promotion: Piece,
 }
 
 impl Move {
   pub fn long_algebraic(&self) -> String {
-    let promotion = match self.promotion {
-      Piece::Nil => "",
-      Piece::Knight => "n",
-      Piece::Bishop => "b",
-      Piece::Rook => "r",
-      Piece::Queen => "q",
-      piece => panic!("Invalid piece promoted: {:?}", piece),
+    let promotion = match self.kind {
+      MoveKind::PromotionKnight => "n",
+      MoveKind::PromotionCaptureKnight => "n",
+      MoveKind::PromotionBishop => "b",
+      MoveKind::PromotionCaptureBishop => "b",
+      MoveKind::PromotionRook => "r",
+      MoveKind::PromotionCaptureRook => "r",
+      MoveKind::PromotionQueen => "q",
+      MoveKind::PromotionCaptureQueen => "q",
+      _ => "",
     };
     format!(
       "{}{}{}",
@@ -49,7 +56,6 @@ mod tests {
       kind: MoveKind::Move,
       from: Square::F2,
       to: Square::F3,
-      promotion: Piece::Nil,
     };
     assert_eq!("f2f3", m.long_algebraic());
 
@@ -57,7 +63,6 @@ mod tests {
       kind: MoveKind::Capture,
       from: Square::F2,
       to: Square::E3,
-      promotion: Piece::Nil,
     };
     assert_eq!("f2e3", m.long_algebraic());
 
@@ -65,7 +70,6 @@ mod tests {
       kind: MoveKind::CastleK,
       from: Square::E1,
       to: Square::G1,
-      promotion: Piece::Nil,
     };
     assert_eq!("e1g1", m.long_algebraic());
 
@@ -73,7 +77,6 @@ mod tests {
       kind: MoveKind::CastleQ,
       from: Square::E1,
       to: Square::C1,
-      promotion: Piece::Nil,
     };
     assert_eq!("e1c1", m.long_algebraic());
 
@@ -81,39 +84,34 @@ mod tests {
       kind: MoveKind::EnPassantCapture,
       from: Square::F7,
       to: Square::G6,
-      promotion: Piece::Nil,
     };
     assert_eq!("f7g6", m.long_algebraic());
 
     let m = Move {
-      kind: MoveKind::Promotion,
+      kind: MoveKind::PromotionKnight,
       from: Square::E2,
       to: Square::E1,
-      promotion: Piece::Knight,
     };
     assert_eq!("e2e1n", m.long_algebraic());
 
     let m = Move {
-      kind: MoveKind::Promotion,
+      kind: MoveKind::PromotionBishop,
       from: Square::E2,
       to: Square::E1,
-      promotion: Piece::Bishop,
     };
     assert_eq!("e2e1b", m.long_algebraic());
 
     let m = Move {
-      kind: MoveKind::PromotionCapture,
+      kind: MoveKind::PromotionCaptureRook,
       from: Square::G7,
       to: Square::H8,
-      promotion: Piece::Rook,
     };
     assert_eq!("g7h8r", m.long_algebraic());
 
     let m = Move {
-      kind: MoveKind::Promotion,
+      kind: MoveKind::PromotionCaptureQueen,
       from: Square::G7,
       to: Square::H8,
-      promotion: Piece::Queen,
     };
     assert_eq!("g7h8q", m.long_algebraic());
   }

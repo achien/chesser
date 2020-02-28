@@ -1,7 +1,6 @@
 use crate::moves::*;
 use crate::piece::*;
 use crate::square::*;
-use std::collections::BTreeSet;
 use std::fmt;
 
 const STARTPOS_FEN: &str =
@@ -24,11 +23,18 @@ pub enum ParseError {
 pub struct PositionBuilder {
   squares: [(Piece, Color); 64],
   side_to_move: Color,
-  castle_k: [bool; Color::NumColors as usize],
-  castle_q: [bool; Color::NumColors as usize],
+  castle_kside: [bool; Color::NumColors as usize],
+  castle_qside: [bool; Color::NumColors as usize],
   en_passant_target: Option<Square>,
   halfmove_clock: i32,
   fullmove_count: i32,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(i32)]
+enum PawnDirection {
+  White = 1i32,
+  Black = -1i32,
 }
 
 impl Default for PositionBuilder {
@@ -43,8 +49,8 @@ impl PositionBuilder {
     Self {
       squares: [empty_square; 64],
       side_to_move: Color::White,
-      castle_k: [false; Color::NumColors as usize],
-      castle_q: [false; Color::NumColors as usize],
+      castle_kside: [false; Color::NumColors as usize],
+      castle_qside: [false; Color::NumColors as usize],
       en_passant_target: None,
       halfmove_clock: 0,
       fullmove_count: 0,
@@ -66,13 +72,13 @@ impl PositionBuilder {
     self
   }
 
-  pub fn castle_k(&mut self, color: Color, can_castle: bool) -> &mut Self {
-    self.castle_k[color as usize] = can_castle;
+  pub fn castle_kside(&mut self, color: Color, can_castle: bool) -> &mut Self {
+    self.castle_kside[color as usize] = can_castle;
     self
   }
 
-  pub fn castle_q(&mut self, color: Color, can_castle: bool) -> &mut Self {
-    self.castle_q[color as usize] = can_castle;
+  pub fn castle_qside(&mut self, color: Color, can_castle: bool) -> &mut Self {
+    self.castle_qside[color as usize] = can_castle;
     self
   }
 
@@ -95,8 +101,8 @@ impl PositionBuilder {
     Position {
       squares: self.squares,
       side_to_move: self.side_to_move,
-      castle_k: self.castle_k,
-      castle_q: self.castle_q,
+      castle_kside: self.castle_kside,
+      castle_qside: self.castle_qside,
       en_passant_target: self.en_passant_target,
       halfmove_clock: self.halfmove_clock,
       fullmove_count: self.fullmove_count,
@@ -107,8 +113,8 @@ impl PositionBuilder {
 pub struct Position {
   squares: [(Piece, Color); 64],
   side_to_move: Color,
-  castle_k: [bool; Color::NumColors as usize],
-  castle_q: [bool; Color::NumColors as usize],
+  castle_kside: [bool; Color::NumColors as usize],
+  castle_qside: [bool; Color::NumColors as usize],
   en_passant_target: Option<Square>,
   halfmove_clock: i32,
   fullmove_count: i32,
@@ -188,10 +194,10 @@ impl Position {
     let castling_rights = tokens.next().ok_or(ParseError::TooFewTokens)?;
     for c in castling_rights.chars() {
       match c {
-        'k' => builder.castle_k(Color::Black, true),
-        'K' => builder.castle_k(Color::White, true),
-        'q' => builder.castle_q(Color::Black, true),
-        'Q' => builder.castle_q(Color::White, true),
+        'k' => builder.castle_kside(Color::Black, true),
+        'K' => builder.castle_kside(Color::White, true),
+        'q' => builder.castle_qside(Color::Black, true),
+        'Q' => builder.castle_qside(Color::White, true),
         '-' => &mut builder,
         _ => return Err(ParseError::InvalidCastlingRights),
       };
@@ -231,12 +237,12 @@ impl Position {
     self.side_to_move
   }
 
-  pub fn castle_k(&self, color: Color) -> bool {
-    self.castle_k[color as usize]
+  pub fn castle_kside(&self, color: Color) -> bool {
+    self.castle_kside[color as usize]
   }
 
-  pub fn castle_q(&self, color: Color) -> bool {
-    self.castle_q[color as usize]
+  pub fn castle_qside(&self, color: Color) -> bool {
+    self.castle_qside[color as usize]
   }
 
   pub fn en_passant_target(&self) -> Option<Square> {
@@ -269,6 +275,20 @@ impl Position {
       return;
     }
     match piece {
+      Piece::WhitePawn => self.gen_pawn_captures(
+        moves,
+        from,
+        color,
+        PawnDirection::White,
+        Rank::R8,
+      ),
+      Piece::BlackPawn => self.gen_pawn_captures(
+        moves,
+        from,
+        color,
+        PawnDirection::Black,
+        Rank::R1,
+      ),
       Piece::Knight => self.gen_knight_moves(moves, from, color),
       Piece::Bishop => {
         self.gen_bishop_moves(moves, from, color, Piece::Bishop)
@@ -305,14 +325,12 @@ impl Position {
             kind: MoveKind::Move,
             from,
             to,
-            promotion: Piece::Nil,
           })
         } else if target_color != color {
           moves.push(Move {
             kind: MoveKind::Capture,
             from,
             to,
-            promotion: Piece::Nil,
           })
         }
       }
@@ -416,7 +434,6 @@ impl Position {
               kind: MoveKind::Move,
               from,
               to,
-              promotion: Piece::Nil,
             });
           } else {
             // The square is occupied.  If it's occupied by the opponent then
@@ -427,7 +444,6 @@ impl Position {
                 kind: MoveKind::Capture,
                 from,
                 to,
-                promotion: Piece::Nil,
               });
             }
             return;
@@ -436,11 +452,54 @@ impl Position {
       };
     }
   }
+
+  fn gen_pawn_captures(
+    &self,
+    moves: &mut Vec<Move>,
+    from: Square,
+    color: Color,
+    direction: PawnDirection,
+    promotion_rank: Rank,
+  ) {
+    for d_file in &[-1i32, 1i32] {
+      let to = from
+        .offset_rank(direction as i32)
+        .unwrap()
+        .offset_file(*d_file);
+      if let Some(to) = to {
+        let (to_piece, to_color) = self.at(to);
+        if to_piece != Piece::Nil && to_color != color {
+          if to.rank() != promotion_rank {
+            moves.push(Move {
+              kind: MoveKind::Capture,
+              from,
+              to,
+            });
+          } else {
+            let kinds = &[
+              MoveKind::PromotionCaptureKnight,
+              MoveKind::PromotionCaptureBishop,
+              MoveKind::PromotionCaptureRook,
+              MoveKind::PromotionCaptureQueen,
+            ];
+            for kind in kinds {
+              moves.push(Move {
+                kind: *kind,
+                from,
+                to,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::collections::BTreeSet;
 
   #[test]
   fn test_empty() {
@@ -500,10 +559,10 @@ mod tests {
 
     assert_eq!(Color::White, pos.side_to_move());
 
-    assert_eq!(true, pos.castle_k(Color::White));
-    assert_eq!(true, pos.castle_q(Color::White));
-    assert_eq!(true, pos.castle_k(Color::Black));
-    assert_eq!(true, pos.castle_q(Color::Black));
+    assert_eq!(true, pos.castle_kside(Color::White));
+    assert_eq!(true, pos.castle_qside(Color::White));
+    assert_eq!(true, pos.castle_kside(Color::Black));
+    assert_eq!(true, pos.castle_qside(Color::Black));
 
     assert_eq!(None, pos.en_passant_target());
 
@@ -527,22 +586,22 @@ mod tests {
   #[test]
   fn test_parse_castling() {
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w - - 0 0").unwrap();
-    assert_eq!(false, pos.castle_k(Color::White));
-    assert_eq!(false, pos.castle_q(Color::White));
-    assert_eq!(false, pos.castle_k(Color::Black));
-    assert_eq!(false, pos.castle_q(Color::Black));
+    assert_eq!(false, pos.castle_kside(Color::White));
+    assert_eq!(false, pos.castle_qside(Color::White));
+    assert_eq!(false, pos.castle_kside(Color::Black));
+    assert_eq!(false, pos.castle_qside(Color::Black));
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w kK - 0 0").unwrap();
-    assert_eq!(true, pos.castle_k(Color::White));
-    assert_eq!(false, pos.castle_q(Color::White));
-    assert_eq!(true, pos.castle_k(Color::Black));
-    assert_eq!(false, pos.castle_q(Color::Black));
+    assert_eq!(true, pos.castle_kside(Color::White));
+    assert_eq!(false, pos.castle_qside(Color::White));
+    assert_eq!(true, pos.castle_kside(Color::Black));
+    assert_eq!(false, pos.castle_qside(Color::Black));
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w qQ - 0 0").unwrap();
-    assert_eq!(false, pos.castle_k(Color::White));
-    assert_eq!(true, pos.castle_q(Color::White));
-    assert_eq!(false, pos.castle_k(Color::Black));
-    assert_eq!(true, pos.castle_q(Color::Black));
+    assert_eq!(false, pos.castle_kside(Color::White));
+    assert_eq!(true, pos.castle_qside(Color::White));
+    assert_eq!(false, pos.castle_kside(Color::Black));
+    assert_eq!(true, pos.castle_qside(Color::Black));
   }
 
   #[test]
@@ -856,6 +915,92 @@ mod tests {
         Square::D4,
       ],
       &moves,
+    );
+  }
+
+  #[test]
+  fn test_white_pawn_capture() {
+    let mut moves = Vec::new();
+    PositionBuilder::new()
+      .place(Square::F3, Piece::WhitePawn, Color::White)
+      .place(Square::G4, Piece::Bishop, Color::Black)
+      .place(Square::G2, Piece::Knight, Color::Black)
+      .place(Square::E4, Piece::Rook, Color::Black)
+      .build()
+      .moves_from(&mut moves, Color::White, Square::F3);
+    assert_targets(&[Square::G4, Square::E4], &moves);
+
+    // Cannot capture own piece
+    let mut moves = Vec::new();
+    PositionBuilder::new()
+      .place(Square::F3, Piece::WhitePawn, Color::White)
+      .place(Square::G4, Piece::Bishop, Color::White)
+      .build()
+      .moves_from(&mut moves, Color::White, Square::F3);
+    assert_targets(&[], &moves);
+
+    // When capturing on promotion, get one move per promotion
+    let moves = PositionBuilder::new()
+      .side_to_move(Color::White)
+      .place(Square::A7, Piece::WhitePawn, Color::White)
+      .place(Square::B8, Piece::Queen, Color::Black)
+      .build()
+      .moves();
+    assert_targets(&[Square::B8], &moves);
+    assert_eq!(4, moves.len());
+    let move_kinds: BTreeSet<_> = moves.iter().map(|m| m.kind).collect();
+    let mut expected_kinds = BTreeSet::new();
+    expected_kinds.insert(MoveKind::PromotionCaptureKnight);
+    expected_kinds.insert(MoveKind::PromotionCaptureBishop);
+    expected_kinds.insert(MoveKind::PromotionCaptureRook);
+    expected_kinds.insert(MoveKind::PromotionCaptureQueen);
+    assert_eq!(
+      None,
+      expected_kinds.symmetric_difference(&move_kinds).next()
+    );
+  }
+
+  #[test]
+  fn test_black_pawn_capture() {
+    let mut moves = Vec::new();
+    PositionBuilder::new()
+      .side_to_move(Color::Black)
+      .place(Square::F4, Piece::BlackPawn, Color::Black)
+      .place(Square::E3, Piece::Bishop, Color::White)
+      .place(Square::E5, Piece::Knight, Color::White)
+      .place(Square::G3, Piece::Rook, Color::White)
+      .build()
+      .moves_from(&mut moves, Color::Black, Square::F4);
+    assert_targets(&[Square::E3, Square::G3], &moves);
+
+    // Cannot capture own piece
+    let mut moves = Vec::new();
+    PositionBuilder::new()
+      .side_to_move(Color::Black)
+      .place(Square::F4, Piece::BlackPawn, Color::Black)
+      .place(Square::E3, Piece::Bishop, Color::Black)
+      .build()
+      .moves_from(&mut moves, Color::Black, Square::F4);
+    assert_targets(&[], &moves);
+
+    // When capturing on promotion, get one move per promotion
+    let moves = PositionBuilder::new()
+      .side_to_move(Color::Black)
+      .place(Square::F2, Piece::BlackPawn, Color::Black)
+      .place(Square::E1, Piece::Queen, Color::White)
+      .build()
+      .moves();
+    assert_targets(&[Square::E1], &moves);
+    assert_eq!(4, moves.len());
+    let move_kinds: BTreeSet<_> = moves.iter().map(|m| m.kind).collect();
+    let mut expected_kinds = BTreeSet::new();
+    expected_kinds.insert(MoveKind::PromotionCaptureKnight);
+    expected_kinds.insert(MoveKind::PromotionCaptureBishop);
+    expected_kinds.insert(MoveKind::PromotionCaptureRook);
+    expected_kinds.insert(MoveKind::PromotionCaptureQueen);
+    assert_eq!(
+      None,
+      expected_kinds.symmetric_difference(&move_kinds).next()
     );
   }
 }

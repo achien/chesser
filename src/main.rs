@@ -37,13 +37,9 @@ fn parse_position(tokens: &mut SplitWhitespace) -> Result<Position, String> {
         }
         _ => return Err(String::from("position needs startpos or fen")),
     }
-    loop {
-        match tokens.next() {
-            Some(m) => (
-                // m is a move
-            ),
-            None => break,
-        }
+
+    for _m in tokens {
+        // m is a move
     }
     Ok(position)
 }
@@ -72,9 +68,9 @@ fn main() {
                 Ok(pos) => position = Some(pos),
                 Err(msg) => eprintln!("{}", msg),
             },
-            Some("go") => match position {
+            Some("go") => match &position {
                 None => eprintln!("no position provided before 'go'"),
-                Some(ref pos) => {
+                Some(pos) => {
                     let moves = pos.moves();
                     let first_move = moves.iter().next();
                     match first_move {
