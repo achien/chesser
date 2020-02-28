@@ -1,4 +1,4 @@
-use num_enum::{TryFromPrimitive, UnsafeFromPrimitive};
+use num_enum::{IntoPrimitive, TryFromPrimitive, UnsafeFromPrimitive};
 use std::convert::TryFrom;
 
 #[derive(
@@ -6,6 +6,7 @@ use std::convert::TryFrom;
   Clone,
   Copy,
   Eq,
+  IntoPrimitive,
   Ord,
   PartialOrd,
   PartialEq,
@@ -26,7 +27,13 @@ pub enum Square {
 }
 
 #[derive(
-  Debug, Clone, Copy, PartialEq, TryFromPrimitive, UnsafeFromPrimitive,
+  Debug,
+  Clone,
+  Copy,
+  IntoPrimitive,
+  PartialEq,
+  TryFromPrimitive,
+  UnsafeFromPrimitive,
 )]
 #[repr(i32)]
 pub enum Rank {
@@ -52,7 +59,13 @@ pub const RANKS: [Rank; 8] = [
 ];
 
 #[derive(
-  Debug, Clone, Copy, PartialEq, TryFromPrimitive, UnsafeFromPrimitive,
+  Debug,
+  Clone,
+  Copy,
+  IntoPrimitive,
+  PartialEq,
+  TryFromPrimitive,
+  UnsafeFromPrimitive,
 )]
 #[repr(i32)]
 pub enum File {
@@ -79,26 +92,26 @@ pub const FILES: [File; 8] = [
 
 impl Square {
   pub fn from_file_rank(file: File, rank: Rank) -> Self {
-    let index = 8 * (rank as i32) + (file as i32);
+    let index = 8 * (i32::from(rank)) + (i32::from(file));
     debug_assert!(Square::try_from(index).is_ok());
     unsafe { Self::from_unchecked(index) }
   }
 
   pub fn file(self) -> File {
-    let index = (self as i32) % 8;
+    let index = i32::from(self) % 8;
     debug_assert!(File::try_from(index).is_ok());
     unsafe { File::from_unchecked(index) }
   }
 
   pub fn rank(self) -> Rank {
-    let index = (self as i32) / 8;
+    let index = i32::from(self) / 8;
     debug_assert!(Rank::try_from(index).is_ok());
     unsafe { Rank::from_unchecked(index) }
   }
 
   pub fn offset_rank(self, d_rank: i32) -> Option<Self> {
-    let rank_num = (self.rank() as i32) + d_rank;
-    if rank_num < (Rank::R1 as i32) || rank_num > (Rank::R8 as i32) {
+    let rank_num = i32::from(self.rank()) + d_rank;
+    if rank_num < Rank::R1.into() || rank_num > Rank::R8.into() {
       None
     } else {
       let rank = unsafe { Rank::from_unchecked(rank_num) };
@@ -107,8 +120,8 @@ impl Square {
   }
 
   pub fn offset_file(self, d_file: i32) -> Option<Self> {
-    let file_num = (self.file() as i32) + d_file;
-    if file_num < (File::A as i32) || file_num > (File::H as i32) {
+    let file_num = i32::from(self.file()) + d_file;
+    if file_num < File::A.into() || file_num > File::H.into() {
       None
     } else {
       let file = unsafe { File::from_unchecked(file_num) };

@@ -2,8 +2,9 @@ use crate::moves::*;
 use crate::piece::*;
 use crate::position::*;
 use crate::square::*;
+use num_enum::IntoPrimitive;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, IntoPrimitive)]
 #[repr(i32)]
 enum PawnDirection {
   White = 1i32,
@@ -273,7 +274,7 @@ impl MoveGenerator {
   ) {
     for d_file in &[-1i32, 1i32] {
       let to = from
-        .offset_rank(direction as i32)
+        .offset_rank(direction.into())
         .unwrap()
         .offset_file(*d_file);
       if let Some(to) = to {
@@ -314,7 +315,7 @@ impl MoveGenerator {
     starting_rank: Rank,
     promotion_rank: Rank,
   ) {
-    let to = from.offset_rank(direction as i32).unwrap();
+    let to = from.offset_rank(direction.into()).unwrap();
     let (to_piece, _) = position.at(to);
     if to_piece != Piece::Nil {
       return;
@@ -341,7 +342,7 @@ impl MoveGenerator {
       });
       // If single push succeeds double push might be possible
       if from.rank() == starting_rank {
-        let to = to.offset_rank(direction as i32).unwrap();
+        let to = to.offset_rank(direction.into()).unwrap();
         let (to_piece, _) = position.at(to);
         if to_piece == Piece::Nil {
           moves.push(Move {
