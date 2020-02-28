@@ -252,16 +252,20 @@ impl Position {
   }
 
   pub fn moves(&self) -> Vec<Move> {
+    self.moves_for_color(self.side_to_move())
+  }
+
+  fn moves_for_color(&self, color: Color) -> Vec<Move> {
     let mut moves: Vec<Move> = Vec::new();
     for square in squares() {
-      self.moves_from(&mut moves, square);
+      self.moves_from(&mut moves, color, square);
     }
     moves
   }
 
-  fn moves_from(&self, moves: &mut Vec<Move>, from: Square) {
-    let (piece, color) = self.at(from);
-    if color != self.side_to_move() {
+  fn moves_from(&self, moves: &mut Vec<Move>, color: Color, from: Square) {
+    let (piece, from_color) = self.at(from);
+    if from_color != color {
       return;
     }
     match piece {
@@ -274,28 +278,22 @@ impl Position {
         self.gen_bishop_moves(moves, from, color, Piece::Queen);
         self.gen_rook_moves(moves, from, color, Piece::Queen);
       }
+      Piece::King => self.gen_king_attacks(moves, from, color),
       _ => (),
     };
   }
 
-  fn gen_knight_moves(
+  // Shared code for king and knight moves
+  fn gen_offset_moves(
     &self,
     moves: &mut Vec<Move>,
     from: Square,
     color: Color,
+    piece: Piece,
+    offsets: &[(i32, i32)],
   ) {
-    debug_assert!(self.at(from) == (Piece::Knight, color));
-    const OFFSETS: [(i32, i32); 8] = [
-      (-2, -1),
-      (-2, 1),
-      (-1, -2),
-      (-1, 2),
-      (1, -2),
-      (1, 2),
-      (2, -1),
-      (2, 1),
-    ];
-    for offset in OFFSETS.iter() {
+    debug_assert!(self.at(from) == (piece, color));
+    for offset in offsets.iter() {
       let (d_file, d_rank) = offset;
       let to = from
         .offset_file(*d_file)
@@ -319,6 +317,44 @@ impl Position {
         }
       }
     }
+  }
+
+  fn gen_knight_moves(
+    &self,
+    moves: &mut Vec<Move>,
+    from: Square,
+    color: Color,
+  ) {
+    const OFFSETS: [(i32, i32); 8] = [
+      (-2, -1),
+      (-2, 1),
+      (-1, -2),
+      (-1, 2),
+      (1, -2),
+      (1, 2),
+      (2, -1),
+      (2, 1),
+    ];
+    self.gen_offset_moves(moves, from, color, Piece::Knight, &OFFSETS);
+  }
+
+  fn gen_king_attacks(
+    &self,
+    moves: &mut Vec<Move>,
+    from: Square,
+    color: Color,
+  ) {
+    const OFFSETS: [(i32, i32); 8] = [
+      (-1, -1),
+      (-1, 0),
+      (-1, 1),
+      (0, -1),
+      (0, 1),
+      (1, -1),
+      (1, 0),
+      (1, 1),
+    ];
+    self.gen_offset_moves(moves, from, color, Piece::King, &OFFSETS);
   }
 
   fn gen_bishop_moves(
@@ -592,7 +628,7 @@ mod tests {
       .place(Square::A1, Piece::Knight, Color::White)
       .place(Square::B3, Piece::Rook, Color::White)
       .build()
-      .moves_from(&mut moves, Square::A1);
+      .moves_from(&mut moves, Color::White, Square::A1);
     assert_targets(&[Square::C2], &moves);
 
     let mut moves = Vec::new();
@@ -601,7 +637,7 @@ mod tests {
       .place(Square::B3, Piece::Rook, Color::White)
       .place(Square::C2, Piece::Rook, Color::White)
       .build()
-      .moves_from(&mut moves, Square::A1);
+      .moves_from(&mut moves, Color::White, Square::A1);
     assert_targets(&[], &moves);
 
     // Capture does not block
@@ -611,7 +647,7 @@ mod tests {
       .place(Square::B3, Piece::Rook, Color::White)
       .place(Square::C2, Piece::Rook, Color::Black)
       .build()
-      .moves_from(&mut moves, Square::A1);
+      .moves_from(&mut moves, Color::White, Square::A1);
     assert_targets(&[Square::C2], &moves);
   }
 
@@ -632,6 +668,38 @@ mod tests {
       } else {
         assert!(false, "Unexpected move to {:?}", m.to);
       }
+    }
+  }
+
+  #[test]
+  fn test_king_attacks() {
+    let cases: &[(Square, &[Square])] = &[
+      (Square::A1, &[Square::A2, Square::B2, Square::B1]),
+      (
+        Square::B1,
+        &[Square::A1, Square::A2, Square::B2, Square::C2, Square::C1],
+      ),
+      (
+        Square::D6,
+        &[
+          Square::C5,
+          Square::C6,
+          Square::C7,
+          Square::D7,
+          Square::E7,
+          Square::E6,
+          Square::E5,
+          Square::D5,
+        ],
+      ),
+    ];
+
+    for (square, expected_targets) in cases {
+      let moves = PositionBuilder::new()
+        .place(*square, Piece::King, Color::White)
+        .build()
+        .moves();
+      assert_targets(expected_targets, &moves);
     }
   }
 
@@ -679,7 +747,7 @@ mod tests {
       .place(Square::F3, Piece::Knight, Color::White)
       .place(Square::C4, Piece::Knight, Color::Black)
       .build()
-      .moves_from(&mut moves, Square::E2);
+      .moves_from(&mut moves, Color::White, Square::E2);
     assert_targets(&[Square::D1, Square::F1, Square::D3, Square::C4], &moves);
   }
 
@@ -715,7 +783,7 @@ mod tests {
       .place(Square::E4, Piece::Knight, Color::White)
       .place(Square::D2, Piece::Knight, Color::Black)
       .build()
-      .moves_from(&mut moves, Square::E2);
+      .moves_from(&mut moves, Color::White, Square::E2);
     assert_targets(
       &[
         Square::E1,
@@ -771,7 +839,7 @@ mod tests {
       .place(Square::D4, Piece::Knight, Color::Black)
       .place(Square::F6, Piece::Rook, Color::White)
       .build()
-      .moves_from(&mut moves, Square::F2);
+      .moves_from(&mut moves, Color::White, Square::F2);
     assert_targets(
       &[
         Square::G2,
