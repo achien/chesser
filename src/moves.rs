@@ -21,7 +21,7 @@ pub struct Move {
 }
 
 impl Move {
-  pub fn long_algebraic(self) -> String {
+  pub fn long_algebraic(&self) -> String {
     let promotion = match self.promotion {
       Piece::Nil => "",
       Piece::Knight => "n",
