@@ -43,8 +43,8 @@ impl MoveGenerator {
     color: Color,
     from: Square,
   ) {
-    let (piece, from_color) = position.at(from);
-    if from_color != color {
+    let (piece, piece_color) = position.at(from);
+    if piece_color != color {
       return;
     }
     match piece {
@@ -116,15 +116,20 @@ impl MoveGenerator {
         Piece::Queen,
         &self.queen_attacks(position, from),
       ),
-      Piece::King => self.gen_attack_moves(
-        moves,
-        position,
-        from,
-        color,
-        Piece::King,
-        &self.king_attacks(from),
-      ),
-      _ => (),
+      Piece::King => {
+        self.gen_attack_moves(
+          moves,
+          position,
+          from,
+          color,
+          Piece::King,
+          &self.king_attacks(from),
+        );
+        self.gen_castle_kside(moves, position, from, color);
+        self.gen_castle_qside(moves, position, from, color);
+      }
+      Piece::Nil => (),
+      p => panic!("Unexpected piece {:?}", p),
     };
   }
 
@@ -251,14 +256,14 @@ impl MoveGenerator {
   ) {
     debug_assert!(position.at(from) == (piece, color));
     for &to in to_squares {
-      let (to_piece, to_color) = position.at(to);
+      let (to_piece, to_piece_color) = position.at(to);
       if to_piece == Piece::Nil {
         moves.push(Move {
           kind: MoveKind::Move,
           from,
           to,
         });
-      } else if to_color != color {
+      } else if to_piece_color != color {
         moves.push(Move {
           kind: MoveKind::Capture,
           from,
@@ -278,8 +283,8 @@ impl MoveGenerator {
     promotion_rank: Rank,
   ) {
     for &to in to_squares {
-      let (to_piece, to_color) = position.at(to);
-      if to_piece != Piece::Nil && to_color != color {
+      let (to_piece, to_piece_color) = position.at(to);
+      if to_piece != Piece::Nil && to_piece_color != color {
         if to.rank() != promotion_rank {
           moves.push(Move {
             kind: MoveKind::Capture,
@@ -360,6 +365,111 @@ impl MoveGenerator {
         }
       }
     }
+  }
+
+  fn gen_castle_kside(
+    &self,
+    moves: &mut Vec<Move>,
+    position: &Position,
+    from: Square,
+    color: Color,
+  ) {
+    debug_assert!(position.at(from) == (Piece::King, color));
+    if !position.can_castle_kside(color) {
+      return;
+    }
+    let rank = match color {
+      Color::White => Rank::R1,
+      Color::Black => Rank::R8,
+    };
+    // Verify king and rook are at starting positions
+    debug_assert!(from.file() == File::E && from.rank() == rank);
+    debug_assert!(
+      position.at(Square::from(File::H, rank)) == (Piece::Rook, color)
+    );
+    // Intermediate squares need to be empty
+    for &file in &[File::F, File::G] {
+      if position.at(Square::from(file, rank)).0 != Piece::Nil {
+        return;
+      }
+    }
+    // King cannot be in check, pass through check, or end up in check
+    let attacked_squares = self.attacked_squares(position, color.other());
+    for &file in &[File::E, File::F, File::G] {
+      let square = Square::from(file, rank);
+      if attacked_squares[square as usize] {
+        return;
+      }
+    }
+    moves.push(Move {
+      kind: MoveKind::CastleKingside,
+      from,
+      to: Square::from(File::G, rank),
+    });
+  }
+
+  fn gen_castle_qside(
+    &self,
+    moves: &mut Vec<Move>,
+    position: &Position,
+    from: Square,
+    color: Color,
+  ) {
+    debug_assert!(position.at(from) == (Piece::King, color));
+    if !position.can_castle_qside(color) {
+      return;
+    }
+    let rank = match color {
+      Color::White => Rank::R1,
+      Color::Black => Rank::R8,
+    };
+    // Verify king and rook are at starting positions
+    debug_assert!(from.file() == File::E && from.rank() == rank);
+    debug_assert!(
+      position.at(Square::from(File::A, rank)) == (Piece::Rook, color)
+    );
+    // Intermediate squares need to be empty
+    for &file in &[File::D, File::C, File::B] {
+      if position.at(Square::from(file, rank)).0 != Piece::Nil {
+        return;
+      }
+    }
+    // King cannot be in check, pass through check, or end up in check
+    let attacked_squares = self.attacked_squares(position, color.other());
+    for &file in &[File::E, File::D, File::C] {
+      let square = Square::from(file, rank);
+      if attacked_squares[square as usize] {
+        return;
+      }
+    }
+    moves.push(Move {
+      kind: MoveKind::CastleQueenside,
+      from,
+      to: Square::from(File::C, rank),
+    });
+  }
+
+  fn attacked_squares(&self, position: &Position, color: Color) -> [bool; 64] {
+    let mut attacked = [false; 64];
+    for square in squares() {
+      let (piece, piece_color) = position.at(square);
+      if piece != Piece::Nil && piece_color == color {
+        let squares = match piece {
+          Piece::WhitePawn => self.wpawn_attacks(square),
+          Piece::BlackPawn => self.bpawn_attacks(square),
+          Piece::Knight => self.knight_attacks(square),
+          Piece::Bishop => self.bishop_attacks(position, square),
+          Piece::Rook => self.rook_attacks(position, square),
+          Piece::Queen => self.queen_attacks(position, square),
+          Piece::King => self.king_attacks(square),
+          p => panic!("Unexpected piece: {:?}", p),
+        };
+        for s in squares {
+          attacked[s as usize] = true;
+        }
+      }
+    }
+    attacked
   }
 }
 
@@ -983,5 +1093,109 @@ mod tests {
       ],
       &moves,
     );
+  }
+
+  #[test]
+  fn test_castle_kingside_white() {
+    let castle_move = Move {
+      kind: MoveKind::CastleKingside,
+      from: Square::E1,
+      to: Square::G1,
+    };
+
+    let mut builder = PositionBuilder::new();
+    builder
+      .side_to_move(Color::White)
+      .place(Square::E1, Piece::King, Color::White)
+      .place(Square::H1, Piece::Rook, Color::White);
+    let position = builder.build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(false, moves.contains(&castle_move));
+
+    // Castle flag must be set
+    builder.can_castle_kside(Color::White, true);
+    let position = builder.build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(true, moves.contains(&castle_move));
+
+    // King must not be in check
+    let position = builder
+      .clone()
+      .place(Square::F3, Piece::Knight, Color::Black)
+      .build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(false, moves.contains(&castle_move));
+
+    // King must not pass through check
+    let position = builder
+      .clone()
+      .place(Square::E2, Piece::BlackPawn, Color::Black)
+      .build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(false, moves.contains(&castle_move));
+  }
+
+  #[test]
+  fn test_castle_queenside_white() {
+    let castle_move = Move {
+      kind: MoveKind::CastleQueenside,
+      from: Square::E1,
+      to: Square::C1,
+    };
+
+    let mut builder = PositionBuilder::new();
+    builder
+      .side_to_move(Color::White)
+      .place(Square::E1, Piece::King, Color::White)
+      .place(Square::A1, Piece::Rook, Color::White);
+    let position = builder.build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(false, moves.contains(&castle_move));
+
+    // Castle flag must be set
+    builder.can_castle_qside(Color::White, true);
+    let position = builder.build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(true, moves.contains(&castle_move));
+
+    // King must not be in check
+    let position = builder
+      .clone()
+      .place(Square::C3, Piece::Knight, Color::Black)
+      .build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(false, moves.contains(&castle_move));
+
+    // King must not pass through check
+    let position = builder
+      .clone()
+      .place(Square::B2, Piece::BlackPawn, Color::Black)
+      .build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(false, moves.contains(&castle_move));
+  }
+
+  #[test]
+  fn test_castle_kingside_black() {
+    let castle_move = Move {
+      kind: MoveKind::CastleKingside,
+      from: Square::E8,
+      to: Square::G8,
+    };
+
+    let mut builder = PositionBuilder::new();
+    builder
+      .side_to_move(Color::Black)
+      .place(Square::E8, Piece::King, Color::Black)
+      .place(Square::H8, Piece::Rook, Color::Black);
+    let position = builder.build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(false, moves.contains(&castle_move));
+
+    // Castle flag must be set
+    builder.can_castle_kside(Color::Black, true);
+    let position = builder.build();
+    let moves = MoveGenerator::new().moves(&position);
+    assert_eq!(true, moves.contains(&castle_move));
   }
 }

@@ -19,11 +19,12 @@ pub enum ParseError {
   InvalidFullmoveCount,
 }
 
+#[derive(Clone)]
 pub struct PositionBuilder {
   pieces: Vec<(Square, Piece, Color)>,
   side_to_move: Color,
-  castle_kside: [bool; 2],
-  castle_qside: [bool; 2],
+  can_castle_kside: [bool; 2],
+  can_castle_qside: [bool; 2],
   en_passant_target: Option<Square>,
   halfmove_clock: i32,
   fullmove_count: i32,
@@ -42,8 +43,8 @@ impl PositionBuilder {
     Self {
       pieces: Vec::new(),
       side_to_move: Color::White,
-      castle_kside: [false; 2],
-      castle_qside: [false; 2],
+      can_castle_kside: [false; 2],
+      can_castle_qside: [false; 2],
       en_passant_target: None,
       halfmove_clock: 0,
       fullmove_count: 0,
@@ -65,13 +66,21 @@ impl PositionBuilder {
     self
   }
 
-  pub fn castle_kside(&mut self, color: Color, can_castle: bool) -> &mut Self {
-    self.castle_kside[color as usize] = can_castle;
+  pub fn can_castle_kside(
+    &mut self,
+    color: Color,
+    can_castle: bool,
+  ) -> &mut Self {
+    self.can_castle_kside[color as usize] = can_castle;
     self
   }
 
-  pub fn castle_qside(&mut self, color: Color, can_castle: bool) -> &mut Self {
-    self.castle_qside[color as usize] = can_castle;
+  pub fn can_castle_qside(
+    &mut self,
+    color: Color,
+    can_castle: bool,
+  ) -> &mut Self {
+    self.can_castle_qside[color as usize] = can_castle;
     self
   }
 
@@ -94,8 +103,8 @@ impl PositionBuilder {
     let mut position = Position {
       squares: [EMPTY_SQUARE; 64],
       side_to_move: self.side_to_move,
-      castle_kside: self.castle_kside,
-      castle_qside: self.castle_qside,
+      can_castle_kside: self.can_castle_kside,
+      can_castle_qside: self.can_castle_qside,
       en_passant_target: self.en_passant_target,
       halfmove_clock: self.halfmove_clock,
       fullmove_count: self.fullmove_count,
@@ -110,8 +119,8 @@ impl PositionBuilder {
 pub struct Position {
   squares: [(Piece, Color); 64],
   side_to_move: Color,
-  castle_kside: [bool; 2],
-  castle_qside: [bool; 2],
+  can_castle_kside: [bool; 2],
+  can_castle_qside: [bool; 2],
   en_passant_target: Option<Square>,
   halfmove_clock: i32,
   fullmove_count: i32,
@@ -143,7 +152,7 @@ impl Position {
           skip -= 1;
           continue;
         }
-        let square = Square::from_file_rank(*file, *rank);
+        let square = Square::from(*file, *rank);
         let piece_or_digit =
           piece_iter.next().ok_or(ParseError::TooFewPieces)?;
         if piece_or_digit.is_ascii_digit() {
@@ -191,10 +200,10 @@ impl Position {
     let castling_rights = tokens.next().ok_or(ParseError::TooFewTokens)?;
     for c in castling_rights.chars() {
       match c {
-        'k' => builder.castle_kside(Color::Black, true),
-        'K' => builder.castle_kside(Color::White, true),
-        'q' => builder.castle_qside(Color::Black, true),
-        'Q' => builder.castle_qside(Color::White, true),
+        'k' => builder.can_castle_kside(Color::Black, true),
+        'K' => builder.can_castle_kside(Color::White, true),
+        'q' => builder.can_castle_qside(Color::Black, true),
+        'Q' => builder.can_castle_qside(Color::White, true),
         '-' => &mut builder,
         _ => return Err(ParseError::InvalidCastlingRights),
       };
@@ -234,12 +243,12 @@ impl Position {
     self.side_to_move
   }
 
-  pub fn castle_kside(&self, color: Color) -> bool {
-    self.castle_kside[color as usize]
+  pub fn can_castle_kside(&self, color: Color) -> bool {
+    self.can_castle_kside[color as usize]
   }
 
-  pub fn castle_qside(&self, color: Color) -> bool {
-    self.castle_qside[color as usize]
+  pub fn can_castle_qside(&self, color: Color) -> bool {
+    self.can_castle_qside[color as usize]
   }
 
   pub fn en_passant_target(&self) -> Option<Square> {
@@ -335,10 +344,10 @@ mod tests {
 
     assert_eq!(Color::White, pos.side_to_move());
 
-    assert_eq!(true, pos.castle_kside(Color::White));
-    assert_eq!(true, pos.castle_qside(Color::White));
-    assert_eq!(true, pos.castle_kside(Color::Black));
-    assert_eq!(true, pos.castle_qside(Color::Black));
+    assert_eq!(true, pos.can_castle_kside(Color::White));
+    assert_eq!(true, pos.can_castle_qside(Color::White));
+    assert_eq!(true, pos.can_castle_kside(Color::Black));
+    assert_eq!(true, pos.can_castle_qside(Color::Black));
 
     assert_eq!(None, pos.en_passant_target());
 
@@ -362,22 +371,22 @@ mod tests {
   #[test]
   fn test_parse_castling() {
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w - - 0 0").unwrap();
-    assert_eq!(false, pos.castle_kside(Color::White));
-    assert_eq!(false, pos.castle_qside(Color::White));
-    assert_eq!(false, pos.castle_kside(Color::Black));
-    assert_eq!(false, pos.castle_qside(Color::Black));
+    assert_eq!(false, pos.can_castle_kside(Color::White));
+    assert_eq!(false, pos.can_castle_qside(Color::White));
+    assert_eq!(false, pos.can_castle_kside(Color::Black));
+    assert_eq!(false, pos.can_castle_qside(Color::Black));
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w kK - 0 0").unwrap();
-    assert_eq!(true, pos.castle_kside(Color::White));
-    assert_eq!(false, pos.castle_qside(Color::White));
-    assert_eq!(true, pos.castle_kside(Color::Black));
-    assert_eq!(false, pos.castle_qside(Color::Black));
+    assert_eq!(true, pos.can_castle_kside(Color::White));
+    assert_eq!(false, pos.can_castle_qside(Color::White));
+    assert_eq!(true, pos.can_castle_kside(Color::Black));
+    assert_eq!(false, pos.can_castle_qside(Color::Black));
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w qQ - 0 0").unwrap();
-    assert_eq!(false, pos.castle_kside(Color::White));
-    assert_eq!(true, pos.castle_qside(Color::White));
-    assert_eq!(false, pos.castle_kside(Color::Black));
-    assert_eq!(true, pos.castle_qside(Color::Black));
+    assert_eq!(false, pos.can_castle_kside(Color::White));
+    assert_eq!(true, pos.can_castle_qside(Color::White));
+    assert_eq!(false, pos.can_castle_kside(Color::Black));
+    assert_eq!(true, pos.can_castle_qside(Color::Black));
   }
 
   #[test]

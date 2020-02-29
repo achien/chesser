@@ -3,8 +3,8 @@ use crate::square::*;
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialOrd, PartialEq)]
 pub enum MoveKind {
   DoublePawnPush,
-  CastleK,
-  CastleQ,
+  CastleKingside,
+  CastleQueenside,
   PromotionCaptureKnight,
   PromotionCaptureBishop,
   PromotionCaptureRook,
@@ -68,14 +68,14 @@ mod tests {
     assert_eq!("f2e3", m.long_algebraic());
 
     let m = Move {
-      kind: MoveKind::CastleK,
+      kind: MoveKind::CastleKingside,
       from: Square::E1,
       to: Square::G1,
     };
     assert_eq!("e1g1", m.long_algebraic());
 
     let m = Move {
-      kind: MoveKind::CastleQ,
+      kind: MoveKind::CastleQueenside,
       from: Square::E1,
       to: Square::C1,
     };

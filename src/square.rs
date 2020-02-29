@@ -91,7 +91,7 @@ pub const FILES: [File; 8] = [
 ];
 
 impl Square {
-  pub fn from_file_rank(file: File, rank: Rank) -> Self {
+  pub fn from(file: File, rank: Rank) -> Self {
     let index = 8 * (i32::from(rank)) + (i32::from(file));
     debug_assert!(Square::try_from(index).is_ok());
     unsafe { Self::from_unchecked(index) }
@@ -115,7 +115,7 @@ impl Square {
       None
     } else {
       let rank = unsafe { Rank::from_unchecked(rank_num) };
-      Some(Self::from_file_rank(self.file(), rank))
+      Some(Self::from(self.file(), rank))
     }
   }
 
@@ -125,7 +125,7 @@ impl Square {
       None
     } else {
       let file = unsafe { File::from_unchecked(file_num) };
-      Some(Self::from_file_rank(file, self.rank()))
+      Some(Self::from(file, self.rank()))
     }
   }
 
@@ -159,7 +159,7 @@ impl Square {
     if chars.next().is_some() {
       return Err(format!("Invalid square: {}", algebraic));
     }
-    Ok(Self::from_file_rank(file, rank))
+    Ok(Self::from(file, rank))
   }
 
   pub fn algebraic(self) -> String {
@@ -217,12 +217,12 @@ mod tests {
 
   #[test]
   fn test_to_square() {
-    assert_eq!(Square::A1, Square::from_file_rank(File::A, Rank::R1));
-    assert_eq!(Square::A8, Square::from_file_rank(File::A, Rank::R8));
-    assert_eq!(Square::H1, Square::from_file_rank(File::H, Rank::R1));
-    assert_eq!(Square::H8, Square::from_file_rank(File::H, Rank::R8));
-    assert_eq!(Square::E3, Square::from_file_rank(File::E, Rank::R3));
-    assert_eq!(Square::F7, Square::from_file_rank(File::F, Rank::R7));
+    assert_eq!(Square::A1, Square::from(File::A, Rank::R1));
+    assert_eq!(Square::A8, Square::from(File::A, Rank::R8));
+    assert_eq!(Square::H1, Square::from(File::H, Rank::R1));
+    assert_eq!(Square::H8, Square::from(File::H, Rank::R8));
+    assert_eq!(Square::E3, Square::from(File::E, Rank::R3));
+    assert_eq!(Square::F7, Square::from(File::F, Rank::R7));
   }
 
   #[test]
