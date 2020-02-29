@@ -1033,26 +1033,6 @@ mod tests {
         to: Square::C6
       })
     );
-
-    // Piece on EP target causes normal capture
-    builder.place(Square::C6, Piece::Knight, Color::Black);
-    let moves = MoveGenerator::new().moves(&builder.build());
-    assert_eq!(2, moves.len(), "moves={:?}", moves);
-    assert_moves(
-      &[
-        Move {
-          kind: MoveKind::Move,
-          from: Square::B5,
-          to: Square::B6,
-        },
-        Move {
-          kind: MoveKind::Capture,
-          from: Square::B5,
-          to: Square::C6,
-        },
-      ],
-      &moves,
-    );
   }
 
   #[test]
@@ -1072,26 +1052,6 @@ mod tests {
         from: Square::A4,
         to: Square::B3,
       })
-    );
-
-    // Piece on EP target causes normal capture
-    builder.place(Square::B3, Piece::Knight, Color::White);
-    let moves = MoveGenerator::new().moves(&builder.build());
-    assert_eq!(2, moves.len(), "moves={:?}", moves);
-    assert_moves(
-      &[
-        Move {
-          kind: MoveKind::Move,
-          from: Square::A4,
-          to: Square::A3,
-        },
-        Move {
-          kind: MoveKind::Capture,
-          from: Square::A4,
-          to: Square::B3,
-        },
-      ],
-      &moves,
     );
   }
 
