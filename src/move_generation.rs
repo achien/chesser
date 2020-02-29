@@ -53,8 +53,8 @@ impl MoveGenerator {
           moves,
           position,
           from,
+          &self.wpawn_attacks(from),
           color,
-          PawnDirection::White,
           Rank::R8,
         );
         self.gen_pawn_pushes(
@@ -71,8 +71,8 @@ impl MoveGenerator {
           moves,
           position,
           from,
+          &self.bpawn_attacks(from),
           color,
-          PawnDirection::Black,
           Rank::R1,
         );
         self.gen_pawn_pushes(
@@ -84,182 +84,187 @@ impl MoveGenerator {
           Rank::R1,
         );
       }
-      Piece::Knight => self.gen_knight_moves(moves, position, from, color),
-      Piece::Bishop => {
-        self.gen_bishop_moves(moves, position, from, color, Piece::Bishop)
-      }
-      Piece::Rook => {
-        self.gen_rook_moves(moves, position, from, color, Piece::Rook)
-      }
-      Piece::Queen => {
-        self.gen_bishop_moves(moves, position, from, color, Piece::Queen);
-        self.gen_rook_moves(moves, position, from, color, Piece::Queen);
-      }
-      Piece::King => self.gen_king_attacks(moves, position, from, color),
+      Piece::Knight => self.gen_attack_moves(
+        moves,
+        position,
+        from,
+        color,
+        Piece::Knight,
+        &self.knight_attacks(from),
+      ),
+      Piece::Bishop => self.gen_attack_moves(
+        moves,
+        position,
+        from,
+        color,
+        Piece::Bishop,
+        &self.bishop_attacks(position, from),
+      ),
+      Piece::Rook => self.gen_attack_moves(
+        moves,
+        position,
+        from,
+        color,
+        Piece::Rook,
+        &self.rook_attacks(position, from),
+      ),
+      Piece::Queen => self.gen_attack_moves(
+        moves,
+        position,
+        from,
+        color,
+        Piece::Queen,
+        &self.queen_attacks(position, from),
+      ),
+      Piece::King => self.gen_attack_moves(
+        moves,
+        position,
+        from,
+        color,
+        Piece::King,
+        &self.king_attacks(from),
+      ),
       _ => (),
     };
   }
 
-  // Shared code for king and knight moves
-  fn gen_offset_moves(
+  fn offset_attacks(
     &self,
-    moves: &mut Vec<Move>,
+    square: Square,
+    offsets: &[(/* ∆file */ i32, /* ∆rank */ i32)],
+  ) -> Vec<Square> {
+    offsets
+      .iter()
+      .map(|&(df, dr)| square.offset_file(df).and_then(|s| s.offset_rank(dr)))
+      .filter(|x| x.is_some())
+      .map(|x| x.unwrap())
+      .collect()
+  }
+
+  fn knight_attacks(&self, square: Square) -> Vec<Square> {
+    self.offset_attacks(
+      square,
+      &[
+        (-2, -1),
+        (-2, 1),
+        (-1, -2),
+        (-1, 2),
+        (1, -2),
+        (1, 2),
+        (2, -1),
+        (2, 1),
+      ],
+    )
+  }
+
+  fn king_attacks(&self, square: Square) -> Vec<Square> {
+    self.offset_attacks(
+      square,
+      &[
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+      ],
+    )
+  }
+
+  fn wpawn_attacks(&self, square: Square) -> Vec<Square> {
+    self.offset_attacks(square, &[(-1, 1), (1, 1)])
+  }
+
+  fn bpawn_attacks(&self, square: Square) -> Vec<Square> {
+    self.offset_attacks(square, &[(-1, -1), (1, -1)])
+  }
+
+  fn ray_attacks(
+    &self,
     position: &Position,
-    from: Square,
-    color: Color,
-    piece: Piece,
-    offsets: &[(i32, i32)],
-  ) {
-    debug_assert!(position.at(from) == (piece, color));
-    for offset in offsets.iter() {
-      let (d_file, d_rank) = offset;
-      let to = from
-        .offset_file(*d_file)
-        .and_then(|s| s.offset_rank(*d_rank));
-      if let Some(to) = to {
-        let (target_piece, target_color) = position.at(to);
-        if target_piece == Piece::Nil {
-          moves.push(Move {
-            kind: MoveKind::Move,
-            from,
-            to,
-          })
-        } else if target_color != color {
-          moves.push(Move {
-            kind: MoveKind::Capture,
-            from,
-            to,
-          })
-        }
+    square: Square,
+    df: i32,
+    dr: i32,
+  ) -> Vec<Square> {
+    debug_assert!(df.abs() <= 1);
+    debug_assert!(dr.abs() <= 1);
+    debug_assert!(df != 0 || dr != 0);
+    let mut res = Vec::new();
+    let mut square = square;
+    loop {
+      square = match square.offset_file(df).and_then(|s| s.offset_rank(dr)) {
+        // We off the edge of the board
+        None => return res,
+        Some(s) => s,
+      };
+      res.push(square);
+      let (piece, _) = position.at(square);
+      if piece != Piece::Nil {
+        // The square is occupied and blocks the rest of the ray
+        return res;
       }
     }
   }
 
-  fn gen_knight_moves(
+  fn bishop_attacks(
     &self,
-    moves: &mut Vec<Move>,
     position: &Position,
-    from: Square,
-    color: Color,
-  ) {
-    const OFFSETS: [(i32, i32); 8] = [
-      (-2, -1),
-      (-2, 1),
-      (-1, -2),
-      (-1, 2),
-      (1, -2),
-      (1, 2),
-      (2, -1),
-      (2, 1),
-    ];
-    self.gen_offset_moves(
-      moves,
-      position,
-      from,
-      color,
-      Piece::Knight,
-      &OFFSETS,
-    );
+    square: Square,
+  ) -> Vec<Square> {
+    [
+      self.ray_attacks(position, square, -1, -1),
+      self.ray_attacks(position, square, -1, 1),
+      self.ray_attacks(position, square, 1, -1),
+      self.ray_attacks(position, square, 1, 1),
+    ]
+    .concat()
   }
 
-  fn gen_king_attacks(
-    &self,
-    moves: &mut Vec<Move>,
-    position: &Position,
-    from: Square,
-    color: Color,
-  ) {
-    const OFFSETS: [(i32, i32); 8] = [
-      (-1, -1),
-      (-1, 0),
-      (-1, 1),
-      (0, -1),
-      (0, 1),
-      (1, -1),
-      (1, 0),
-      (1, 1),
-    ];
-    self.gen_offset_moves(moves, position, from, color, Piece::King, &OFFSETS);
+  fn rook_attacks(&self, position: &Position, square: Square) -> Vec<Square> {
+    [
+      self.ray_attacks(position, square, 0, -1),
+      self.ray_attacks(position, square, 0, 1),
+      self.ray_attacks(position, square, -1, 0),
+      self.ray_attacks(position, square, 1, 0),
+    ]
+    .concat()
   }
 
-  fn gen_bishop_moves(
+  fn queen_attacks(&self, position: &Position, square: Square) -> Vec<Square> {
+    [
+      self.bishop_attacks(position, square),
+      self.rook_attacks(position, square),
+    ]
+    .concat()
+  }
+
+  fn gen_attack_moves(
     &self,
     moves: &mut Vec<Move>,
     position: &Position,
     from: Square,
     color: Color,
     piece: Piece,
+    to_squares: &[Square],
   ) {
     debug_assert!(position.at(from) == (piece, color));
-    self.gen_ray_moves(moves, position, from, color, piece, -1, -1);
-    self.gen_ray_moves(moves, position, from, color, piece, -1, 1);
-    self.gen_ray_moves(moves, position, from, color, piece, 1, -1);
-    self.gen_ray_moves(moves, position, from, color, piece, 1, 1);
-  }
-
-  fn gen_rook_moves(
-    &self,
-    moves: &mut Vec<Move>,
-    position: &Position,
-    from: Square,
-    color: Color,
-    piece: Piece,
-  ) {
-    debug_assert!(position.at(from) == (piece, color));
-    self.gen_ray_moves(moves, position, from, color, piece, -1, 0);
-    self.gen_ray_moves(moves, position, from, color, piece, 1, 0);
-    self.gen_ray_moves(moves, position, from, color, piece, 0, -1);
-    self.gen_ray_moves(moves, position, from, color, piece, 0, 1);
-  }
-
-  fn gen_ray_moves(
-    &self,
-    moves: &mut Vec<Move>,
-    position: &Position,
-    from: Square,
-    color: Color,
-    piece: Piece,
-    d_file: i32,
-    d_rank: i32,
-  ) {
-    debug_assert!(position.at(from) == (piece, color));
-    debug_assert!(d_file.abs() <= 1);
-    debug_assert!(d_rank.abs() <= 1);
-    debug_assert!(d_file != 0 || d_rank != 0);
-    let mut target = Some(from);
-    loop {
-      target = target
-        .unwrap()
-        .offset_file(d_file)
-        .and_then(|s| s.offset_rank(d_rank));
-      match target {
-        // Return if we fell off the edge of the board
-        None => return,
-        Some(to) => {
-          let (target_piece, target_color) = position.at(to);
-          if target_piece == Piece::Nil {
-            // The square is empty, add to list of moves then continue
-            // checking the rest of the ray
-            moves.push(Move {
-              kind: MoveKind::Move,
-              from,
-              to,
-            });
-          } else {
-            // The square is occupied.  If it's occupied by the opponent then
-            // add the capture.  In either case return because there are no
-            // more moves along this ray.
-            if target_color != color {
-              moves.push(Move {
-                kind: MoveKind::Capture,
-                from,
-                to,
-              });
-            }
-            return;
-          }
-        }
-      };
+    for &to in to_squares {
+      let (to_piece, to_color) = position.at(to);
+      if to_piece == Piece::Nil {
+        moves.push(Move {
+          kind: MoveKind::Move,
+          from,
+          to,
+        });
+      } else if to_color != color {
+        moves.push(Move {
+          kind: MoveKind::Capture,
+          from,
+          to,
+        });
+      }
     }
   }
 
@@ -268,47 +273,41 @@ impl MoveGenerator {
     moves: &mut Vec<Move>,
     position: &Position,
     from: Square,
+    to_squares: &[Square],
     color: Color,
-    direction: PawnDirection,
     promotion_rank: Rank,
   ) {
-    for d_file in &[-1i32, 1i32] {
-      let to = from
-        .offset_rank(direction.into())
-        .unwrap()
-        .offset_file(*d_file);
-      if let Some(to) = to {
-        let (to_piece, to_color) = position.at(to);
-        if to_piece != Piece::Nil && to_color != color {
-          if to.rank() != promotion_rank {
+    for &to in to_squares {
+      let (to_piece, to_color) = position.at(to);
+      if to_piece != Piece::Nil && to_color != color {
+        if to.rank() != promotion_rank {
+          moves.push(Move {
+            kind: MoveKind::Capture,
+            from,
+            to,
+          });
+        } else {
+          let kinds = &[
+            MoveKind::PromotionCaptureKnight,
+            MoveKind::PromotionCaptureBishop,
+            MoveKind::PromotionCaptureRook,
+            MoveKind::PromotionCaptureQueen,
+          ];
+          for kind in kinds {
             moves.push(Move {
-              kind: MoveKind::Capture,
-              from,
-              to,
-            });
-          } else {
-            let kinds = &[
-              MoveKind::PromotionCaptureKnight,
-              MoveKind::PromotionCaptureBishop,
-              MoveKind::PromotionCaptureRook,
-              MoveKind::PromotionCaptureQueen,
-            ];
-            for kind in kinds {
-              moves.push(Move {
-                kind: *kind,
-                from,
-                to,
-              });
-            }
-          }
-        } else if let Some(ep_target) = position.en_passant_target() {
-          if to == ep_target && to_piece == Piece::Nil {
-            moves.push(Move {
-              kind: MoveKind::EnPassantCapture,
+              kind: *kind,
               from,
               to,
             });
           }
+        }
+      } else if let Some(ep_target) = position.en_passant_target() {
+        if to == ep_target && to_piece == Piece::Nil {
+          moves.push(Move {
+            kind: MoveKind::EnPassantCapture,
+            from,
+            to,
+          });
         }
       }
     }
