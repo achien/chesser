@@ -295,8 +295,9 @@ impl Position {
   }
 
   pub fn make_move(&mut self, m: Move) {
+    let color = self.side_to_move();
     let (piece, piece_color) = self.at(m.from);
-    debug_assert!(self.side_to_move() == piece_color);
+    debug_assert!(color == piece_color);
     let mut move_info = MoveInfo {
       last_move: m,
       piece,
@@ -307,7 +308,7 @@ impl Position {
     if m.kind.is_non_ep_capture() {
       let (captured_piece, captured_piece_color) = self.at(m.to);
       debug_assert!(captured_piece != Piece::Nil);
-      debug_assert!(captured_piece_color == piece_color.other());
+      debug_assert!(captured_piece_color == color.other());
       self.remove(m.to);
       move_info.captured = captured_piece;
     } else {
@@ -318,64 +319,64 @@ impl Position {
     self.remove(m.from);
     match m.kind {
       MoveKind::DoublePawnPush => {
-        self.place(m.to, piece, piece_color);
+        self.place(m.to, piece, color);
       }
       MoveKind::CastleKingside => {
-        let home_rank = piece_color.home_rank();
+        let home_rank = color.home_rank();
         let rook_from = Square::from(File::H, home_rank);
         let rook_to = Square::from(File::F, home_rank);
         debug_assert!(m.from == Square::from(File::E, home_rank));
         debug_assert!(m.to == Square::from(File::G, home_rank));
         debug_assert!(piece == Piece::King);
         debug_assert!(EMPTY_SQUARE == self.at(m.to));
-        debug_assert!((Piece::Rook, piece_color) == self.at(rook_from));
+        debug_assert!((Piece::Rook, color) == self.at(rook_from));
         debug_assert!(EMPTY_SQUARE == self.at(rook_to));
         self.remove(rook_from);
-        self.place(rook_to, Piece::Rook, piece_color);
-        self.place(m.to, Piece::King, piece_color);
+        self.place(rook_to, Piece::Rook, color);
+        self.place(m.to, Piece::King, color);
       }
       MoveKind::CastleQueenside => {
-        let home_rank = piece_color.home_rank();
+        let home_rank = color.home_rank();
         let rook_from = Square::from(File::A, home_rank);
         let rook_to = Square::from(File::D, home_rank);
         debug_assert!(m.from == Square::from(File::E, home_rank));
         debug_assert!(m.to == Square::from(File::C, home_rank));
         debug_assert!(piece == Piece::King);
         debug_assert!(EMPTY_SQUARE == self.at(m.to));
-        debug_assert!((Piece::Rook, piece_color) == self.at(rook_from));
+        debug_assert!((Piece::Rook, color) == self.at(rook_from));
         debug_assert!(EMPTY_SQUARE == self.at(rook_to));
         self.remove(rook_from);
-        self.place(rook_to, Piece::Rook, piece_color);
-        self.place(m.to, Piece::King, piece_color);
+        self.place(rook_to, Piece::Rook, color);
+        self.place(m.to, Piece::King, color);
       }
       MoveKind::PromotionCaptureKnight => {
-        self.place(m.to, Piece::Knight, piece_color);
+        self.place(m.to, Piece::Knight, color);
       }
       MoveKind::PromotionCaptureBishop => {
-        self.place(m.to, Piece::Bishop, piece_color);
+        self.place(m.to, Piece::Bishop, color);
       }
       MoveKind::PromotionCaptureRook => {
-        self.place(m.to, Piece::Rook, piece_color);
+        self.place(m.to, Piece::Rook, color);
       }
       MoveKind::PromotionCaptureQueen => {
-        self.place(m.to, Piece::Queen, piece_color);
+        self.place(m.to, Piece::Queen, color);
       }
       MoveKind::PromotionKnight => {
-        self.place(m.to, Piece::Knight, piece_color);
+        self.place(m.to, Piece::Knight, color);
       }
       MoveKind::PromotionBishop => {
-        self.place(m.to, Piece::Bishop, piece_color);
+        self.place(m.to, Piece::Bishop, color);
       }
       MoveKind::PromotionRook => {
-        self.place(m.to, Piece::Rook, piece_color);
+        self.place(m.to, Piece::Rook, color);
       }
       MoveKind::PromotionQueen => {
-        self.place(m.to, Piece::Queen, piece_color);
+        self.place(m.to, Piece::Queen, color);
       }
       MoveKind::EnPassantCapture => {
         debug_assert!(
-          (piece_color == Color::White && piece == Piece::WhitePawn)
-            || (piece_color == Color::Black && piece == Piece::BlackPawn)
+          (color == Color::White && piece == Piece::WhitePawn)
+            || (color == Color::Black && piece == Piece::BlackPawn)
         );
         let captured_square = Square::from(m.to.file(), m.from.rank());
         let (captured_piece, captured_color) = self.at(captured_square);
@@ -387,17 +388,21 @@ impl Position {
         );
         move_info.captured = captured_piece;
         self.remove(captured_square);
-        self.place(m.to, piece, piece_color);
+        self.place(m.to, piece, color);
       }
       MoveKind::Capture => {
-        self.place(m.to, piece, piece_color);
+        self.place(m.to, piece, color);
       }
       MoveKind::Move => {
-        self.place(m.to, piece, piece_color);
+        self.place(m.to, piece, color);
       }
     };
 
-    self.side_to_move = self.side_to_move.other();
+    self.side_to_move = color.other();
+    self.fullmove_count = match color {
+      Color::White => self.fullmove_count,
+      Color::Black => self.fullmove_count + 1,
+    };
     self.state.push(State {
       move_info: Some(move_info),
     });
@@ -415,37 +420,38 @@ impl Position {
     } = state.move_info.unwrap();
     debug_assert!(self.at(m.from) == EMPTY_SQUARE);
     let (_, piece_color) = self.at(m.to);
+    debug_assert!(piece_color == move_color);
 
     // Unmove piece
     self.remove(m.to);
     match m.kind {
       MoveKind::CastleKingside => {
-        let home_rank = piece_color.home_rank();
+        let home_rank = move_color.home_rank();
         let rook_from = Square::from(File::H, home_rank);
         let rook_to = Square::from(File::F, home_rank);
         debug_assert!(piece == Piece::King);
-        debug_assert!(self.at(rook_to) == (Piece::Rook, piece_color));
+        debug_assert!(self.at(rook_to) == (Piece::Rook, move_color));
         self.remove(rook_to);
-        self.place(rook_from, Piece::Rook, piece_color);
-        self.place(m.from, piece, piece_color);
+        self.place(rook_from, Piece::Rook, move_color);
+        self.place(m.from, piece, move_color);
       }
       MoveKind::CastleQueenside => {
-        let home_rank = piece_color.home_rank();
+        let home_rank = move_color.home_rank();
         let rook_from = Square::from(File::A, home_rank);
         let rook_to = Square::from(File::D, home_rank);
         debug_assert!(piece == Piece::King);
-        debug_assert!(self.at(rook_to) == (Piece::Rook, piece_color));
+        debug_assert!(self.at(rook_to) == (Piece::Rook, move_color));
         self.remove(rook_to);
-        self.place(rook_from, Piece::Rook, piece_color);
-        self.place(m.from, piece, piece_color);
+        self.place(rook_from, Piece::Rook, move_color);
+        self.place(m.from, piece, move_color);
       }
       MoveKind::EnPassantCapture => {
         let captured_square = Square::from(m.to.file(), m.from.rank());
-        self.place(m.from, piece, piece_color);
+        self.place(m.from, piece, move_color);
         self.place(captured_square, captured, move_color.other());
       }
       _ => {
-        self.place(m.from, piece, piece_color);
+        self.place(m.from, piece, move_color);
         // Replace captured piece
         if captured != Piece::Nil {
           debug_assert!(m.kind.is_non_ep_capture());
@@ -454,6 +460,10 @@ impl Position {
       }
     }
 
+    self.fullmove_count = match move_color {
+      Color::White => self.fullmove_count,
+      Color::Black => self.fullmove_count - 1,
+    };
     self.side_to_move = move_color;
   }
 }
@@ -732,5 +742,53 @@ mod tests {
       assert_eq!(their_pawn, pos.at(captured_square));
       assert_eq!(Piece::Nil, pos.at(ep_target).0);
     }
+  }
+
+  #[test]
+  fn test_fullmove_counter() {
+    let mut pos = PositionBuilder::new()
+      .fullmove_count(1)
+      .place(Square::A1, Piece::King, Color::White)
+      .place(Square::H8, Piece::King, Color::Black)
+      .build();
+    assert_eq!(1, pos.fullmove_count());
+
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::A1,
+      to: Square::A2,
+    });
+    // Move count only changes after black moves
+    assert_eq!(1, pos.fullmove_count());
+
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::H8,
+      to: Square::H7,
+    });
+    assert_eq!(2, pos.fullmove_count());
+
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::A2,
+      to: Square::A1,
+    });
+    assert_eq!(2, pos.fullmove_count());
+
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::H7,
+      to: Square::H8,
+    });
+    assert_eq!(3, pos.fullmove_count());
+
+    pos.unmake_move();
+    assert_eq!(2, pos.fullmove_count());
+    pos.unmake_move();
+    assert_eq!(2, pos.fullmove_count());
+    pos.unmake_move();
+    assert_eq!(1, pos.fullmove_count());
+    pos.unmake_move();
+    assert_eq!(1, pos.fullmove_count());
   }
 }
