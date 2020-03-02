@@ -29,6 +29,9 @@ struct MoveInfo {
 struct State {
   move_info: Option<MoveInfo>,
   en_passant_target: Option<Square>,
+  // Counter for the fifty-move rule.  Counts up and resets on captures and
+  // pawn moves.
+  halfmove_clock: i32,
 }
 
 pub struct Position {
@@ -36,8 +39,10 @@ pub struct Position {
   side_to_move: Color,
   can_castle_kside: [bool; 2],
   can_castle_qside: [bool; 2],
-  halfmove_clock: i32,
+  // Move count.  Starts at 1 and is incremented after Black moves
   fullmove_count: i32,
+  // Tracks moves that were made, and irreversible state like castling rights,
+  // the halfmove clock, and en passant target
   state: Vec<State>,
 }
 
@@ -127,11 +132,11 @@ impl PositionBuilder {
       side_to_move: self.side_to_move,
       can_castle_kside: self.can_castle_kside,
       can_castle_qside: self.can_castle_qside,
-      halfmove_clock: self.halfmove_clock,
       fullmove_count: self.fullmove_count,
       state: vec![State {
         move_info: None,
         en_passant_target: self.en_passant_target,
+        halfmove_clock: self.halfmove_clock,
       }],
     };
     for &(square, piece, color) in &self.pieces {
@@ -271,7 +276,7 @@ impl Position {
   }
 
   pub fn halfmove_clock(&self) -> i32 {
-    self.halfmove_clock
+    self.state.last().unwrap().halfmove_clock
   }
 
   pub fn fullmove_count(&self) -> i32 {
@@ -297,7 +302,7 @@ impl Position {
   }
 
   pub fn make_move(&mut self, m: Move) {
-    let color = self.side_to_move();
+    let color = self.side_to_move;
     let (piece, piece_color) = self.at(m.from);
     debug_assert!(color == piece_color);
     let mut move_info = MoveInfo {
@@ -406,15 +411,27 @@ impl Position {
       Color::White => self.fullmove_count,
       Color::Black => self.fullmove_count + 1,
     };
+    let current_state = self.state.last().unwrap();
 
     let next_ep_target = if m.kind == MoveKind::DoublePawnPush {
       Some(Square::midpoint(m.from, m.to))
     } else {
       None
     };
+
+    let next_halfmove_clock = if move_info.captured != Piece::Nil
+      || piece == Piece::WhitePawn
+      || piece == Piece::BlackPawn
+    {
+      0
+    } else {
+      current_state.halfmove_clock + 1
+    };
+
     self.state.push(State {
       move_info: Some(move_info),
       en_passant_target: next_ep_target,
+      halfmove_clock: next_halfmove_clock,
     });
   }
 
@@ -755,7 +772,7 @@ mod tests {
   }
 
   #[test]
-  fn test_fullmove_counter() {
+  fn test_update_fullmove_counter() {
     let mut pos = PositionBuilder::new()
       .fullmove_count(1)
       .place(Square::A1, Piece::King, Color::White)
@@ -803,7 +820,7 @@ mod tests {
   }
 
   #[test]
-  fn test_set_en_passant_target() {
+  fn test_update_en_passant_target() {
     let mut pos = PositionBuilder::new()
       .place(Square::B2, Piece::WhitePawn, Color::White)
       .place(Square::D7, Piece::BlackPawn, Color::Black)
@@ -828,5 +845,58 @@ mod tests {
     assert_eq!(Some(Square::B3), pos.en_passant_target());
     pos.unmake_move();
     assert_eq!(None, pos.en_passant_target());
+  }
+
+  #[test]
+  fn test_update_halfmove_clock() {
+    let mut pos = PositionBuilder::new()
+      .halfmove_clock(35)
+      .place(Square::C2, Piece::WhitePawn, Color::White)
+      .place(Square::H6, Piece::Bishop, Color::White)
+      .place(Square::A5, Piece::BlackPawn, Color::Black)
+      .place(Square::E2, Piece::Knight, Color::Black)
+      .build();
+    assert_eq!(35, pos.halfmove_clock());
+
+    // Halfmove clock increments on move (Bh6-g5)
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::H6,
+      to: Square::G5,
+    });
+    assert_eq!(36, pos.halfmove_clock());
+
+    // Halfmove clock resets on pawn move (a5-a4)
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::A5,
+      to: Square::A4,
+    });
+    assert_eq!(0, pos.halfmove_clock());
+
+    // Increments again on move (Bg5-f4)
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::G5,
+      to: Square::F4,
+    });
+    assert_eq!(1, pos.halfmove_clock());
+
+    // Resets on capture (Ne2xf4)
+    pos.make_move(Move {
+      kind: MoveKind::Capture,
+      from: Square::E2,
+      to: Square::F4,
+    });
+    assert_eq!(0, pos.halfmove_clock());
+
+    pos.unmake_move();
+    assert_eq!(1, pos.halfmove_clock());
+    pos.unmake_move();
+    assert_eq!(0, pos.halfmove_clock());
+    pos.unmake_move();
+    assert_eq!(36, pos.halfmove_clock());
+    pos.unmake_move();
+    assert_eq!(35, pos.halfmove_clock());
   }
 }
