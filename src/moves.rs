@@ -1,3 +1,4 @@
+use crate::piece::Piece;
 use crate::square::*;
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialOrd, PartialEq)]
@@ -23,6 +24,33 @@ pub struct Move {
   pub kind: MoveKind,
   pub from: Square,
   pub to: Square,
+}
+
+impl MoveKind {
+  pub fn is_non_ep_capture(self) -> bool {
+    match self {
+      MoveKind::Capture => true,
+      MoveKind::PromotionCaptureBishop => true,
+      MoveKind::PromotionCaptureKnight => true,
+      MoveKind::PromotionCaptureRook => true,
+      MoveKind::PromotionCaptureQueen => true,
+      _ => false,
+    }
+  }
+
+  pub fn promotion(self) -> Piece {
+    match self {
+      MoveKind::PromotionKnight => Piece::Knight,
+      MoveKind::PromotionCaptureKnight => Piece::Knight,
+      MoveKind::PromotionBishop => Piece::Bishop,
+      MoveKind::PromotionCaptureBishop => Piece::Bishop,
+      MoveKind::PromotionRook => Piece::Rook,
+      MoveKind::PromotionCaptureRook => Piece::Rook,
+      MoveKind::PromotionQueen => Piece::Queen,
+      MoveKind::PromotionCaptureQueen => Piece::Queen,
+      _ => Piece::Nil,
+    }
+  }
 }
 
 impl Move {
