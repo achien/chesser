@@ -129,6 +129,14 @@ impl Square {
     }
   }
 
+  // We can average 2 squares to get the one between them
+  pub fn midpoint(s1: Self, s2: Self) -> Self {
+    let s1_val: i32 = s1.into();
+    let s2_val: i32 = s2.into();
+    debug_assert!((s1_val + s2_val) % 2 == 0);
+    unsafe { Square::from_unchecked((s1_val + s2_val) / 2) }
+  }
+
   pub fn parse_algebraic(algebraic: &str) -> Result<Self, String> {
     if algebraic.len() > 2 {
       return Err(format!("Invalid square: {}", algebraic));

@@ -28,6 +28,17 @@ struct MoveInfo {
 
 struct State {
   move_info: Option<MoveInfo>,
+  en_passant_target: Option<Square>,
+}
+
+pub struct Position {
+  squares: [(Piece, Color); 64],
+  side_to_move: Color,
+  can_castle_kside: [bool; 2],
+  can_castle_qside: [bool; 2],
+  halfmove_clock: i32,
+  fullmove_count: i32,
+  state: Vec<State>,
 }
 
 #[derive(Clone)]
@@ -116,27 +127,18 @@ impl PositionBuilder {
       side_to_move: self.side_to_move,
       can_castle_kside: self.can_castle_kside,
       can_castle_qside: self.can_castle_qside,
-      en_passant_target: self.en_passant_target,
       halfmove_clock: self.halfmove_clock,
       fullmove_count: self.fullmove_count,
-      state: vec![State { move_info: None }],
+      state: vec![State {
+        move_info: None,
+        en_passant_target: self.en_passant_target,
+      }],
     };
     for &(square, piece, color) in &self.pieces {
       position.place(square, piece, color);
     }
     position
   }
-}
-
-pub struct Position {
-  squares: [(Piece, Color); 64],
-  side_to_move: Color,
-  can_castle_kside: [bool; 2],
-  can_castle_qside: [bool; 2],
-  en_passant_target: Option<Square>,
-  halfmove_clock: i32,
-  fullmove_count: i32,
-  state: Vec<State>,
 }
 
 impl fmt::Debug for Position {
@@ -265,7 +267,7 @@ impl Position {
   }
 
   pub fn en_passant_target(&self) -> Option<Square> {
-    self.en_passant_target
+    self.state.last().unwrap().en_passant_target
   }
 
   pub fn halfmove_clock(&self) -> i32 {
@@ -398,13 +400,21 @@ impl Position {
       }
     };
 
+    // Update position state
     self.side_to_move = color.other();
     self.fullmove_count = match color {
       Color::White => self.fullmove_count,
       Color::Black => self.fullmove_count + 1,
     };
+
+    let next_ep_target = if m.kind == MoveKind::DoublePawnPush {
+      Some(Square::midpoint(m.from, m.to))
+    } else {
+      None
+    };
     self.state.push(State {
       move_info: Some(move_info),
+      en_passant_target: next_ep_target,
     });
   }
 
@@ -790,5 +800,33 @@ mod tests {
     assert_eq!(1, pos.fullmove_count());
     pos.unmake_move();
     assert_eq!(1, pos.fullmove_count());
+  }
+
+  #[test]
+  fn test_set_en_passant_target() {
+    let mut pos = PositionBuilder::new()
+      .place(Square::B2, Piece::WhitePawn, Color::White)
+      .place(Square::D7, Piece::BlackPawn, Color::Black)
+      .build();
+    assert_eq!(None, pos.en_passant_target());
+
+    pos.make_move(Move {
+      kind: MoveKind::DoublePawnPush,
+      from: Square::B2,
+      to: Square::B4,
+    });
+    assert_eq!(Some(Square::B3), pos.en_passant_target());
+
+    pos.make_move(Move {
+      kind: MoveKind::DoublePawnPush,
+      from: Square::D7,
+      to: Square::D5,
+    });
+    assert_eq!(Some(Square::D6), pos.en_passant_target());
+
+    pos.unmake_move();
+    assert_eq!(Some(Square::B3), pos.en_passant_target());
+    pos.unmake_move();
+    assert_eq!(None, pos.en_passant_target());
   }
 }
