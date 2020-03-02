@@ -471,6 +471,14 @@ impl MoveGenerator {
     }
     attacked
   }
+
+  pub fn in_check(&self, position: &Position, color: Color) -> bool {
+    let attacked = self.attacked_squares(position, color.other());
+    squares().any(|square| {
+      let (piece, piece_color) = position.at(square);
+      piece_color == color && piece == Piece::King && attacked[square as usize]
+    })
+  }
 }
 
 #[cfg(test)]
@@ -1157,5 +1165,17 @@ mod tests {
     let position = builder.build();
     let moves = MoveGenerator::new().moves(&position);
     assert_eq!(true, moves.contains(&castle_move));
+  }
+
+  #[test]
+  fn test_in_check() {
+    let pos = PositionBuilder::new()
+      .place(Square::A1, Piece::King, Color::White)
+      .place(Square::A2, Piece::Rook, Color::Black)
+      .place(Square::A3, Piece::King, Color::Black)
+      .build();
+    let mg = MoveGenerator::new();
+    assert_eq!(true, mg.in_check(&pos, Color::White));
+    assert_eq!(false, mg.in_check(&pos, Color::Black));
   }
 }
