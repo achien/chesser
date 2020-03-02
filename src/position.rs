@@ -28,6 +28,8 @@ struct MoveInfo {
 
 struct State {
   move_info: Option<MoveInfo>,
+  can_castle_kside: [bool; 2],
+  can_castle_qside: [bool; 2],
   en_passant_target: Option<Square>,
   // Counter for the fifty-move rule.  Counts up and resets on captures and
   // pawn moves.
@@ -37,8 +39,6 @@ struct State {
 pub struct Position {
   squares: [(Piece, Color); 64],
   side_to_move: Color,
-  can_castle_kside: [bool; 2],
-  can_castle_qside: [bool; 2],
   // Move count.  Starts at 1 and is incremented after Black moves
   fullmove_count: i32,
   // Tracks moves that were made, and irreversible state like castling rights,
@@ -130,11 +130,11 @@ impl PositionBuilder {
     let mut position = Position {
       squares: [EMPTY_SQUARE; 64],
       side_to_move: self.side_to_move,
-      can_castle_kside: self.can_castle_kside,
-      can_castle_qside: self.can_castle_qside,
       fullmove_count: self.fullmove_count,
       state: vec![State {
         move_info: None,
+        can_castle_kside: self.can_castle_kside,
+        can_castle_qside: self.can_castle_qside,
         en_passant_target: self.en_passant_target,
         halfmove_clock: self.halfmove_clock,
       }],
@@ -264,11 +264,11 @@ impl Position {
   }
 
   pub fn can_castle_kside(&self, color: Color) -> bool {
-    self.can_castle_kside[color as usize]
+    self.state.last().unwrap().can_castle_kside[color as usize]
   }
 
   pub fn can_castle_qside(&self, color: Color) -> bool {
-    self.can_castle_qside[color as usize]
+    self.state.last().unwrap().can_castle_qside[color as usize]
   }
 
   pub fn en_passant_target(&self) -> Option<Square> {
@@ -310,6 +310,7 @@ impl Position {
       piece,
       captured: Piece::Nil,
     };
+    let home_rank = color.home_rank();
 
     // Remove captured piece
     if m.kind.is_non_ep_capture() {
@@ -329,7 +330,6 @@ impl Position {
         self.place(m.to, piece, color);
       }
       MoveKind::CastleKingside => {
-        let home_rank = color.home_rank();
         let rook_from = Square::from(File::H, home_rank);
         let rook_to = Square::from(File::F, home_rank);
         debug_assert!(m.from == Square::from(File::E, home_rank));
@@ -411,7 +411,7 @@ impl Position {
       Color::White => self.fullmove_count,
       Color::Black => self.fullmove_count + 1,
     };
-    let current_state = self.state.last().unwrap();
+    let state = self.state.last().unwrap();
 
     let next_ep_target = if m.kind == MoveKind::DoublePawnPush {
       Some(Square::midpoint(m.from, m.to))
@@ -425,11 +425,34 @@ impl Position {
     {
       0
     } else {
-      current_state.halfmove_clock + 1
+      state.halfmove_clock + 1
     };
+
+    let mut next_can_castle_kside = state.can_castle_kside;
+    let mut next_can_castle_qside = state.can_castle_qside;
+    if piece == Piece::King {
+      next_can_castle_kside[color as usize] = false;
+      next_can_castle_qside[color as usize] = false;
+    } else if piece == Piece::Rook {
+      if m.from == Square::from(File::H, home_rank) {
+        next_can_castle_kside[color as usize] = false;
+      } else if m.from == Square::from(File::A, home_rank) {
+        next_can_castle_qside[color as usize] = false;
+      }
+    }
+    if move_info.captured == Piece::Rook {
+      let opp_home_rank = color.other().home_rank();
+      if m.to == Square::from(File::H, opp_home_rank) {
+        next_can_castle_kside[color.other() as usize] = false;
+      } else if m.to == Square::from(File::A, opp_home_rank) {
+        next_can_castle_qside[color.other() as usize] = false;
+      }
+    }
 
     self.state.push(State {
       move_info: Some(move_info),
+      can_castle_kside: next_can_castle_kside,
+      can_castle_qside: next_can_castle_qside,
       en_passant_target: next_ep_target,
       halfmove_clock: next_halfmove_clock,
     });
@@ -448,12 +471,12 @@ impl Position {
     debug_assert!(self.at(m.from) == EMPTY_SQUARE);
     let (_, piece_color) = self.at(m.to);
     debug_assert!(piece_color == move_color);
+    let home_rank = move_color.home_rank();
 
     // Unmove piece
     self.remove(m.to);
     match m.kind {
       MoveKind::CastleKingside => {
-        let home_rank = move_color.home_rank();
         let rook_from = Square::from(File::H, home_rank);
         let rook_to = Square::from(File::F, home_rank);
         debug_assert!(piece == Piece::King);
@@ -463,7 +486,6 @@ impl Position {
         self.place(m.from, piece, move_color);
       }
       MoveKind::CastleQueenside => {
-        let home_rank = move_color.home_rank();
         let rook_from = Square::from(File::A, home_rank);
         let rook_to = Square::from(File::D, home_rank);
         debug_assert!(piece == Piece::King);
@@ -898,5 +920,90 @@ mod tests {
     assert_eq!(36, pos.halfmove_clock());
     pos.unmake_move();
     assert_eq!(35, pos.halfmove_clock());
+  }
+
+  #[test]
+  fn test_update_castling_rights() {
+    let mut builder = PositionBuilder::new();
+    builder
+      .place(Square::E1, Piece::King, Color::White)
+      .place(Square::A1, Piece::Rook, Color::White)
+      .place(Square::H1, Piece::Rook, Color::White)
+      .place(Square::E8, Piece::King, Color::Black)
+      .place(Square::A8, Piece::Rook, Color::Black)
+      .place(Square::H8, Piece::Rook, Color::Black)
+      .place(Square::E4, Piece::Knight, Color::White)
+      .can_castle_kside(Color::White, true)
+      .can_castle_qside(Color::White, true)
+      .can_castle_kside(Color::Black, true)
+      .can_castle_qside(Color::Black, true);
+
+    let assert_castling =
+      |pos: &Position, wk: bool, wq: bool, bk: bool, bq: bool| {
+        assert_eq!(wk, pos.can_castle_kside(Color::White));
+        assert_eq!(wq, pos.can_castle_qside(Color::White));
+        assert_eq!(bk, pos.can_castle_kside(Color::Black));
+        assert_eq!(bq, pos.can_castle_qside(Color::Black));
+      };
+
+    let mut pos = builder.clone().build();
+    assert_castling(&pos, true, true, true, true);
+
+    // Unrelated move does not change castling state
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::E4,
+      to: Square::F2,
+    });
+    assert_castling(&pos, true, true, true, true);
+
+    // King move clears castling state
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::E8,
+      to: Square::G8,
+    });
+    assert_castling(&pos, true, true, false, false);
+
+    // Castling also clears castling state
+    pos.make_move(Move {
+      kind: MoveKind::CastleKingside,
+      from: Square::E1,
+      to: Square::G1,
+    });
+    assert_castling(&pos, false, false, false, false);
+
+    // Rook move clears castling state on each side
+    let mut pos = builder.clone().build();
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::H1,
+      to: Square::H2,
+    });
+    assert_castling(&pos, false, true, true, true);
+
+    pos.make_move(Move {
+      kind: MoveKind::Move,
+      from: Square::A8,
+      to: Square::A7,
+    });
+    assert_castling(&pos, false, true, true, false);
+
+    // Rook capture clears castling state
+    let mut pos = builder.clone().build();
+    pos.make_move(Move {
+      kind: MoveKind::Capture,
+      from: Square::A1,
+      to: Square::A8,
+    });
+    assert_castling(&pos, true, false, true, false);
+
+    let mut pos = builder.clone().side_to_move(Color::Black).build();
+    pos.make_move(Move {
+      kind: MoveKind::Capture,
+      from: Square::H8,
+      to: Square::H1,
+    });
+    assert_castling(&pos, false, true, false, true);
   }
 }
