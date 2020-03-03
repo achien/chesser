@@ -1,5 +1,4 @@
-use num_enum::{IntoPrimitive, TryFromPrimitive, UnsafeFromPrimitive};
-use std::convert::TryFrom;
+use num_enum::{IntoPrimitive, UnsafeFromPrimitive};
 
 #[derive(
   Debug,
@@ -10,7 +9,6 @@ use std::convert::TryFrom;
   Ord,
   PartialOrd,
   PartialEq,
-  TryFromPrimitive,
   UnsafeFromPrimitive,
 )]
 #[repr(i32)]
@@ -26,15 +24,7 @@ pub enum Square {
   A8, B8, C8, D8, E8, F8, G8, H8,
 }
 
-#[derive(
-  Debug,
-  Clone,
-  Copy,
-  IntoPrimitive,
-  PartialEq,
-  TryFromPrimitive,
-  UnsafeFromPrimitive,
-)]
+#[derive(Debug, Clone, Copy, IntoPrimitive, PartialEq, UnsafeFromPrimitive)]
 #[repr(i32)]
 pub enum Rank {
   R1,
@@ -58,15 +48,7 @@ pub const RANKS: [Rank; 8] = [
   Rank::R8,
 ];
 
-#[derive(
-  Debug,
-  Clone,
-  Copy,
-  IntoPrimitive,
-  PartialEq,
-  TryFromPrimitive,
-  UnsafeFromPrimitive,
-)]
+#[derive(Debug, Clone, Copy, IntoPrimitive, PartialEq, UnsafeFromPrimitive)]
 #[repr(i32)]
 pub enum File {
   A,
@@ -93,19 +75,16 @@ pub const FILES: [File; 8] = [
 impl Square {
   pub fn from(file: File, rank: Rank) -> Self {
     let index = 8 * (i32::from(rank)) + (i32::from(file));
-    debug_assert!(Square::try_from(index).is_ok());
     unsafe { Self::from_unchecked(index) }
   }
 
   pub fn file(self) -> File {
     let index = i32::from(self) % 8;
-    debug_assert!(File::try_from(index).is_ok());
     unsafe { File::from_unchecked(index) }
   }
 
   pub fn rank(self) -> Rank {
     let index = i32::from(self) / 8;
-    debug_assert!(Rank::try_from(index).is_ok());
     unsafe { Rank::from_unchecked(index) }
   }
 
@@ -206,7 +185,6 @@ impl Iterator for Squares {
     if self.square_num >= 64 {
       None
     } else {
-      debug_assert!(Square::try_from(self.square_num).is_ok());
       let square = unsafe { Square::from_unchecked(self.square_num) };
       self.square_num += 1;
       Some(square)
