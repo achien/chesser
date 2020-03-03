@@ -1,5 +1,3 @@
-extern crate num;
-
 use chessier::perft::*;
 use num::{Integer, NumCast};
 use std::time::Instant;
