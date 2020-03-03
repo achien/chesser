@@ -12,3 +12,4 @@ path="src/bin/perft.rs"
 
 [dependencies]
 num_enum="0.4"
+num="0.2"

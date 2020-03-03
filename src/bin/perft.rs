@@ -1,13 +1,20 @@
+extern crate num;
+
 use chessier::perft::*;
+use num::{Integer, NumCast};
 use std::time::Instant;
 
 const TOTAL_CUTOFF: u64 = 27_182_818;
 
-fn format(num: u64) -> String {
-  if num < 1000 {
+fn format<T>(num: T) -> String
+where
+  T: Integer + NumCast + std::fmt::Display + Copy,
+{
+  let one_thousand = NumCast::from(1000).unwrap();
+  if num < one_thousand {
     format!("{}", num)
   } else {
-    format!("{},{:03}", format(num / 1000), num % 1000)
+    format!("{},{:03}", format(num / one_thousand), num % one_thousand)
   }
 }
 
@@ -41,7 +48,7 @@ fn main() {
         elapsed_micros / 1_000_000,
         elapsed_micros % 1_000_000,
         format(total),
-        (total as u128) * 1_000_000 / elapsed_micros,
+        format((total as u128) * 1_000_000 / elapsed_micros),
       );
     }
   }
