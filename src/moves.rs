@@ -38,6 +38,32 @@ impl MoveKind {
     }
   }
 
+  pub fn is_any_capture(self) -> bool {
+    self == MoveKind::EnPassantCapture || self.is_non_ep_capture()
+  }
+
+  pub fn is_castle(self) -> bool {
+    match self {
+      MoveKind::CastleKingside => true,
+      MoveKind::CastleQueenside => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_promotion(self) -> bool {
+    match self {
+      MoveKind::PromotionKnight => true,
+      MoveKind::PromotionBishop => true,
+      MoveKind::PromotionRook => true,
+      MoveKind::PromotionQueen => true,
+      MoveKind::PromotionCaptureKnight => true,
+      MoveKind::PromotionCaptureBishop => true,
+      MoveKind::PromotionCaptureRook => true,
+      MoveKind::PromotionCaptureQueen => true,
+      _ => false,
+    }
+  }
+
   pub fn promotion(self) -> Piece {
     match self {
       MoveKind::PromotionKnight => Piece::Knight,

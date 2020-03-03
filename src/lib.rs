@@ -3,6 +3,7 @@
 
 pub mod move_generation;
 pub mod moves;
+pub mod perft;
 pub mod piece;
 pub mod position;
 pub mod square;
