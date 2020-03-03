@@ -11,6 +11,18 @@ enum PawnDirection {
   Black = -1i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MoveParseError {
+  TooShort,
+  TooLong,
+  InvalidSquare(SquareParseError),
+  InvalidPromotion(char),
+  FromSquareEmpty,
+  /// Occupied by a piece of the same color
+  ToSquareOccupied,
+  IllegalMove,
+}
+
 pub struct MoveGenerator {}
 
 impl Default for MoveGenerator {
@@ -478,6 +490,125 @@ impl MoveGenerator {
       let (piece, piece_color) = position.at(square);
       piece_color == color && piece == Piece::King && attacked[square as usize]
     })
+  }
+
+  /// Parses a move and makes sure it is pseudo-legal.  Right now it only
+  /// parses moves in long algebraic format.
+  pub fn parse_move(
+    &self,
+    pos: &Position,
+    move_str: &str,
+  ) -> Result<Move, MoveParseError> {
+    let m = self.parse_maybe_illegal_move(pos, move_str)?;
+    let moves = self.moves(pos);
+    if !moves.contains(&m) {
+      return Err(MoveParseError::IllegalMove);
+    }
+    Ok(m)
+  }
+
+  // Basic parsing to get a Move object.  Does a bit of checking to make sure
+  // thte move is valid but ignores all rules beyond that.
+  fn parse_maybe_illegal_move(
+    &self,
+    pos: &Position,
+    move_str: &str,
+  ) -> Result<Move, MoveParseError> {
+    if move_str.len() > 5 {
+      return Err(MoveParseError::TooLong);
+    } else if move_str.len() < 4 {
+      return Err(MoveParseError::TooShort);
+    }
+
+    let from = match Square::parse_algebraic(&move_str[0..2]) {
+      Ok(s) => s,
+      Err(e) => return Err(MoveParseError::InvalidSquare(e)),
+    };
+    let to = match Square::parse_algebraic(&move_str[2..4]) {
+      Ok(s) => s,
+      Err(e) => return Err(MoveParseError::InvalidSquare(e)),
+    };
+    let promotion = move_str.chars().nth(4);
+
+    let (from_piece, from_piece_color) = pos.at(from);
+    let (to_piece, to_piece_color) = pos.at(to);
+    if from_piece == Piece::Nil {
+      return Err(MoveParseError::FromSquareEmpty);
+    }
+
+    if to_piece != Piece::Nil {
+      if from_piece_color == to_piece_color {
+        return Err(MoveParseError::ToSquareOccupied);
+      }
+      let kind = match promotion {
+        None => MoveKind::Capture,
+        Some('n') => MoveKind::PromotionCaptureKnight,
+        Some('b') => MoveKind::PromotionCaptureBishop,
+        Some('r') => MoveKind::PromotionCaptureRook,
+        Some('q') => MoveKind::PromotionCaptureQueen,
+        Some(ch) => return Err(MoveParseError::InvalidPromotion(ch)),
+      };
+      return Ok(Move { kind, from, to });
+    }
+
+    // Move is an en passant if:
+    // 1. Piece is a pawn
+    // 2. Moving to en passant target square
+    // (No other cases since there are no legal other legal pawn moves
+    // to that square because it has to be empty and is blocked by the pawn
+    // that just moved.)
+    if Some(to) == pos.en_passant_target()
+      && (from_piece == Piece::WhitePawn || from_piece == Piece::BlackPawn)
+    {
+      return Ok(Move {
+        kind: MoveKind::EnPassantCapture,
+        from,
+        to,
+      });
+    }
+
+    if (from_piece == Piece::WhitePawn
+      && from.rank() == Rank::R2
+      && to.rank() == Rank::R4)
+      || (from_piece == Piece::BlackPawn
+        && from.rank() == Rank::R7
+        && to.rank() == Rank::R5)
+    {
+      return Ok(Move {
+        kind: MoveKind::DoublePawnPush,
+        from,
+        to,
+      });
+    }
+
+    // If king is moving from file E to C or G then it's castling.  This
+    // assumes the move is correct; it does not make sure the squares are
+    // on the home rank or that the king has castling rights.
+    if from_piece == Piece::King && from.file() == File::E {
+      if to.file() == File::G {
+        return Ok(Move {
+          kind: MoveKind::CastleKingside,
+          from,
+          to,
+        });
+      } else if to.file() == File::C {
+        return Ok(Move {
+          kind: MoveKind::CastleQueenside,
+          from,
+          to,
+        });
+      }
+    }
+
+    let kind = match promotion {
+      None => MoveKind::Move,
+      Some('n') => MoveKind::PromotionKnight,
+      Some('b') => MoveKind::PromotionBishop,
+      Some('r') => MoveKind::PromotionRook,
+      Some('q') => MoveKind::PromotionQueen,
+      Some(ch) => return Err(MoveParseError::InvalidPromotion(ch)),
+    };
+    Ok(Move { kind, from, to })
   }
 }
 
@@ -1177,5 +1308,233 @@ mod tests {
     let mg = MoveGenerator::new();
     assert_eq!(true, mg.in_check(&pos, Color::White));
     assert_eq!(false, mg.in_check(&pos, Color::Black));
+  }
+
+  #[test]
+  fn test_parse_move_error() {
+    let pos = Position::startpos();
+    let cases = &[
+      ("h81", MoveParseError::TooShort),
+      ("h7xg8q", MoveParseError::TooLong),
+      (
+        "A2a4",
+        MoveParseError::InvalidSquare(SquareParseError::InvalidFile('A')),
+      ),
+      (
+        "c2xd3",
+        MoveParseError::InvalidSquare(SquareParseError::InvalidFile('x')),
+      ),
+      ("a2a8k", MoveParseError::InvalidPromotion('k')),
+      ("a2a8Q", MoveParseError::InvalidPromotion('Q')),
+      ("a3a4", MoveParseError::FromSquareEmpty),
+      ("b1d2", MoveParseError::ToSquareOccupied),
+      ("b1d4", MoveParseError::IllegalMove),
+      ("e7e5", MoveParseError::IllegalMove),
+    ];
+    let movegen = MoveGenerator::new();
+    for (move_str, err) in cases {
+      assert_eq!(Err(*err), movegen.parse_move(&pos, move_str));
+    }
+  }
+
+  #[test]
+  fn test_parse_move() {
+    let movegen = MoveGenerator::new();
+    let pos = Position::startpos();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::Move,
+        from: Square::B1,
+        to: Square::C3
+      }),
+      movegen.parse_move(&pos, "b1c3"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::Move,
+        from: Square::E2,
+        to: Square::E3,
+      }),
+      movegen.parse_move(&pos, "e2e3"),
+    );
+  }
+
+  #[test]
+  fn test_parse_capture() {
+    let pos = PositionBuilder::new()
+      .place(Square::E3, Piece::Bishop, Color::White)
+      .place(Square::D4, Piece::Knight, Color::Black)
+      .build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::Capture,
+        from: Square::E3,
+        to: Square::D4,
+      }),
+      MoveGenerator::new().parse_move(&pos, "e3d4"),
+    );
+  }
+
+  #[test]
+  fn test_parse_double_pawn_push() {
+    let movegen = MoveGenerator::new();
+    let mut pos = Position::startpos();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::DoublePawnPush,
+        from: Square::E2,
+        to: Square::E4,
+      }),
+      movegen.parse_move(&pos, "e2e4"),
+    );
+    pos.make_move(movegen.parse_move(&pos, "e2e4").unwrap());
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::DoublePawnPush,
+        from: Square::D7,
+        to: Square::D5,
+      }),
+      movegen.parse_move(&pos, "d7d5"),
+    );
+  }
+
+  #[test]
+  fn test_parse_castle() {
+    let movegen = MoveGenerator::new();
+    let mut builder = PositionBuilder::new();
+    builder
+      .place(Square::E1, Piece::King, Color::White)
+      .place(Square::A1, Piece::Rook, Color::White)
+      .place(Square::H1, Piece::Rook, Color::White)
+      .place(Square::E8, Piece::King, Color::Black)
+      .place(Square::A8, Piece::Rook, Color::Black)
+      .place(Square::H8, Piece::Rook, Color::Black)
+      .place(Square::E4, Piece::Knight, Color::White)
+      .can_castle_kside(Color::White, true)
+      .can_castle_qside(Color::White, true)
+      .can_castle_kside(Color::Black, true)
+      .can_castle_qside(Color::Black, true);
+
+    let pos = builder.side_to_move(Color::Black).build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::CastleKingside,
+        from: Square::E8,
+        to: Square::G8,
+      }),
+      movegen.parse_move(&pos, "e8g8"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::CastleQueenside,
+        from: Square::E8,
+        to: Square::C8,
+      }),
+      movegen.parse_move(&pos, "e8c8"),
+    );
+
+    let pos = builder.side_to_move(Color::White).build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::CastleKingside,
+        from: Square::E1,
+        to: Square::G1,
+      }),
+      movegen.parse_move(&pos, "e1g1"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::CastleQueenside,
+        from: Square::E1,
+        to: Square::C1,
+      }),
+      movegen.parse_move(&pos, "e1c1"),
+    );
+  }
+
+  #[test]
+  fn test_parse_promotion() {
+    let movegen = MoveGenerator::new();
+    let mut builder = PositionBuilder::new();
+    builder
+      .place(Square::A7, Piece::WhitePawn, Color::White)
+      .place(Square::B8, Piece::Knight, Color::Black)
+      .place(Square::A2, Piece::BlackPawn, Color::Black)
+      .place(Square::B1, Piece::Knight, Color::White);
+
+    let pos = builder.build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::PromotionBishop,
+        from: Square::A7,
+        to: Square::A8,
+      }),
+      movegen.parse_move(&pos, "a7a8b"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::PromotionCaptureRook,
+        from: Square::A7,
+        to: Square::B8,
+      }),
+      movegen.parse_move(&pos, "a7b8r"),
+    );
+
+    let pos = builder.side_to_move(Color::Black).build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::PromotionKnight,
+        from: Square::A2,
+        to: Square::A1,
+      }),
+      movegen.parse_move(&pos, "a2a1n"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::PromotionCaptureQueen,
+        from: Square::A2,
+        to: Square::B1,
+      }),
+      movegen.parse_move(&pos, "a2b1q"),
+    );
+  }
+
+  #[test]
+  fn test_parse_en_passant() {
+    let movegen = MoveGenerator::new();
+    let mut builder = PositionBuilder::new();
+    builder
+      .place(Square::C4, Piece::BlackPawn, Color::Black)
+      .place(Square::B4, Piece::WhitePawn, Color::White)
+      .place(Square::G5, Piece::WhitePawn, Color::White)
+      .place(Square::H5, Piece::BlackPawn, Color::Black);
+
+    let pos = builder
+      .clone()
+      .side_to_move(Color::Black)
+      .en_passant_target(Some(Square::B3))
+      .build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::EnPassantCapture,
+        from: Square::C4,
+        to: Square::B3,
+      }),
+      movegen.parse_move(&pos, "c4b3"),
+    );
+
+    let pos = builder
+      .clone()
+      .side_to_move(Color::White)
+      .en_passant_target(Some(Square::H6))
+      .build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::EnPassantCapture,
+        from: Square::G5,
+        to: Square::H6,
+      }),
+      movegen.parse_move(&pos, "g5h6"),
+    );
   }
 }

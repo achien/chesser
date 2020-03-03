@@ -7,7 +7,10 @@ fn not_implemented(line: &str) {
   eprintln!("not implemented: {}", line.trim())
 }
 
-fn parse_position(tokens: &mut SplitWhitespace) -> Result<Position, String> {
+fn parse_position(
+  movegen: &MoveGenerator,
+  tokens: &mut SplitWhitespace,
+) -> Result<Position, String> {
   let mut position: Position;
   match tokens.next() {
     Some("startpos") => {
@@ -43,7 +46,7 @@ fn parse_position(tokens: &mut SplitWhitespace) -> Result<Position, String> {
   }
 
   for algebraic_move in tokens {
-    let m = match position.parse_long_algebraic_move(algebraic_move) {
+    let m = match movegen.parse_move(&position, algebraic_move) {
       Ok(mv) => mv,
       Err(e) => {
         return Err(format!("Error parsing move {}: {:?}", algebraic_move, e))
@@ -75,7 +78,7 @@ pub fn run() {
       Some("setoption") => not_implemented(&line),
       Some("register") => not_implemented(&line),
       Some("ucinewgame") => (),
-      Some("position") => match parse_position(&mut tokens) {
+      Some("position") => match parse_position(&movegen, &mut tokens) {
         Ok(pos) => position = Some(pos),
         Err(msg) => eprintln!("{}", msg),
       },
