@@ -7,7 +7,7 @@ const STARTPOS_FEN: &str =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 #[derive(Debug, PartialEq)]
-pub enum ParseError {
+pub enum FENParseError {
   TooFewTokens,
   TooManyTokens,
   TooFewPieces,
@@ -18,6 +18,17 @@ pub enum ParseError {
   InvalidEnPassantTarget,
   InvalidHalfmoveClock,
   InvalidFullmoveCount,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MoveParseError {
+  TooShort,
+  TooLong,
+  InvalidSquare(SquareParseError),
+  InvalidPromotion(char),
+  FromSquareEmpty,
+  /// Occupied by a piece of the same color
+  ToSquareOccupied,
 }
 
 struct MoveInfo {
@@ -157,14 +168,14 @@ impl Position {
     Self::from_fen(STARTPOS_FEN).unwrap()
   }
 
-  pub fn from_fen(fen: &str) -> Result<Self, ParseError> {
+  pub fn from_fen(fen: &str) -> Result<Self, FENParseError> {
     let mut builder = PositionBuilder::new();
     let mut tokens = fen.split_whitespace();
-    let pieces = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    let pieces = tokens.next().ok_or(FENParseError::TooFewTokens)?;
     let mut pieces_tokens = pieces.split('/');
     for rank in RANKS.iter().rev() {
       let rank_pieces =
-        pieces_tokens.next().ok_or(ParseError::TooFewPieces)?;
+        pieces_tokens.next().ok_or(FENParseError::TooFewPieces)?;
       let mut piece_iter = rank_pieces.chars();
       let mut skip = 0;
       for file in FILES.iter() {
@@ -174,11 +185,11 @@ impl Position {
         }
         let square = Square::from(*file, *rank);
         let piece_or_digit =
-          piece_iter.next().ok_or(ParseError::TooFewPieces)?;
+          piece_iter.next().ok_or(FENParseError::TooFewPieces)?;
         if piece_or_digit.is_ascii_digit() {
           let digit = piece_or_digit.to_digit(10).unwrap();
           if digit < 1 || digit > 8 {
-            return Err(ParseError::InvalidPiece);
+            return Err(FENParseError::InvalidPiece);
           }
           skip = digit - 1;
         } else {
@@ -191,7 +202,7 @@ impl Position {
               'r' => Piece::Rook,
               'q' => Piece::Queen,
               'k' => Piece::King,
-              _ => return Err(ParseError::InvalidPiece),
+              _ => return Err(FENParseError::InvalidPiece),
             },
           };
           let color = if piece_or_digit.is_uppercase() {
@@ -203,21 +214,21 @@ impl Position {
         }
       }
       if piece_iter.next().is_some() {
-        return Err(ParseError::TooManyPieces);
+        return Err(FENParseError::TooManyPieces);
       }
     }
     if pieces_tokens.next().is_some() {
-      return Err(ParseError::TooManyPieces);
+      return Err(FENParseError::TooManyPieces);
     }
 
-    let side_to_move = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    let side_to_move = tokens.next().ok_or(FENParseError::TooFewTokens)?;
     match side_to_move {
       "w" => builder.side_to_move(Color::White),
       "b" => builder.side_to_move(Color::Black),
-      _ => return Err(ParseError::InvalidSideToMove),
+      _ => return Err(FENParseError::InvalidSideToMove),
     };
 
-    let castling_rights = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    let castling_rights = tokens.next().ok_or(FENParseError::TooFewTokens)?;
     for c in castling_rights.chars() {
       match c {
         'k' => builder.can_castle_kside(Color::Black, true),
@@ -225,34 +236,138 @@ impl Position {
         'q' => builder.can_castle_qside(Color::Black, true),
         'Q' => builder.can_castle_qside(Color::White, true),
         '-' => &mut builder,
-        _ => return Err(ParseError::InvalidCastlingRights),
+        _ => return Err(FENParseError::InvalidCastlingRights),
       };
     }
 
-    let en_passant_target = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    let en_passant_target =
+      tokens.next().ok_or(FENParseError::TooFewTokens)?;
     if en_passant_target != "-" {
       match Square::parse_algebraic(en_passant_target) {
         Ok(s) => builder.en_passant_target(Some(s)),
-        Err(_) => return Err(ParseError::InvalidEnPassantTarget),
+        Err(_) => return Err(FENParseError::InvalidEnPassantTarget),
       };
     }
 
-    let halfmove_clock = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    let halfmove_clock = tokens.next().ok_or(FENParseError::TooFewTokens)?;
     match halfmove_clock.parse::<i32>() {
       Ok(val) => builder.halfmove_clock(val),
-      Err(_) => return Err(ParseError::InvalidHalfmoveClock),
+      Err(_) => return Err(FENParseError::InvalidHalfmoveClock),
     };
 
-    let fullmove_count = tokens.next().ok_or(ParseError::TooFewTokens)?;
+    let fullmove_count = tokens.next().ok_or(FENParseError::TooFewTokens)?;
     match fullmove_count.parse::<i32>() {
       Ok(val) => builder.fullmove_count(val),
-      Err(_) => return Err(ParseError::InvalidFullmoveCount),
+      Err(_) => return Err(FENParseError::InvalidFullmoveCount),
     };
 
     if tokens.next().is_some() {
-      return Err(ParseError::TooManyTokens);
+      return Err(FENParseError::TooManyTokens);
     }
     Ok(builder.build())
+  }
+
+  /// Parses a move.  Does minimal validation of the move beyond figuring
+  /// what type of move it should be.
+  pub fn parse_long_algebraic_move(
+    &self,
+    move_str: &str,
+  ) -> Result<Move, MoveParseError> {
+    if move_str.len() > 5 {
+      return Err(MoveParseError::TooLong);
+    } else if move_str.len() < 4 {
+      return Err(MoveParseError::TooShort);
+    }
+
+    let from = match Square::parse_algebraic(&move_str[0..2]) {
+      Ok(s) => s,
+      Err(e) => return Err(MoveParseError::InvalidSquare(e)),
+    };
+    let to = match Square::parse_algebraic(&move_str[2..4]) {
+      Ok(s) => s,
+      Err(e) => return Err(MoveParseError::InvalidSquare(e)),
+    };
+    let promotion = move_str.chars().nth(4);
+
+    let (from_piece, from_piece_color) = self.at(from);
+    let (to_piece, to_piece_color) = self.at(to);
+    if from_piece == Piece::Nil {
+      return Err(MoveParseError::FromSquareEmpty);
+    }
+
+    if to_piece != Piece::Nil {
+      if from_piece_color == to_piece_color {
+        return Err(MoveParseError::ToSquareOccupied);
+      }
+      let kind = match promotion {
+        None => MoveKind::Capture,
+        Some('n') => MoveKind::PromotionCaptureKnight,
+        Some('b') => MoveKind::PromotionCaptureBishop,
+        Some('r') => MoveKind::PromotionCaptureRook,
+        Some('q') => MoveKind::PromotionCaptureQueen,
+        Some(ch) => return Err(MoveParseError::InvalidPromotion(ch)),
+      };
+      return Ok(Move { kind, from, to });
+    }
+
+    // Move is an en passant if:
+    // 1. Piece is a pawn
+    // 2. Moving to en passant target square
+    // (No other cases since there are no legal other legal pawn moves
+    // to that square because it has to be empty and is blocked by the pawn
+    // that just moved.)
+    if Some(to) == self.en_passant_target()
+      && (from_piece == Piece::WhitePawn || from_piece == Piece::BlackPawn)
+    {
+      return Ok(Move {
+        kind: MoveKind::EnPassantCapture,
+        from,
+        to,
+      });
+    }
+
+    if (from_piece == Piece::WhitePawn
+      && from.rank() == Rank::R2
+      && to.rank() == Rank::R4)
+      || (from_piece == Piece::BlackPawn
+        && from.rank() == Rank::R7
+        && to.rank() == Rank::R5)
+    {
+      return Ok(Move {
+        kind: MoveKind::DoublePawnPush,
+        from,
+        to,
+      });
+    }
+
+    // If king is moving from file E to C or G then it's castling.  This
+    // assumes the move is correct; it does not make sure the squares are
+    // on the home rank or that the king has castling rights.
+    if from_piece == Piece::King && from.file() == File::E {
+      if to.file() == File::G {
+        return Ok(Move {
+          kind: MoveKind::CastleKingside,
+          from,
+          to,
+        });
+      } else if to.file() == File::C {
+        return Ok(Move {
+          kind: MoveKind::CastleQueenside,
+          from,
+          to,
+        });
+      }
+    }
+
+    let kind = match promotion {
+      None => MoveKind::Move,
+      Some('n') => MoveKind::PromotionKnight,
+      Some('b') => MoveKind::PromotionBishop,
+      Some('r') => MoveKind::PromotionRook,
+      Some('q') => MoveKind::PromotionQueen,
+      Some(ch) => return Err(MoveParseError::InvalidPromotion(ch)),
+    };
+    Ok(Move { kind, from, to })
   }
 
   pub fn at(&self, square: Square) -> (Piece, Color) {
@@ -521,6 +636,23 @@ impl Position {
 mod tests {
   use super::*;
 
+  fn builder_with_castling() -> PositionBuilder {
+    let mut builder = PositionBuilder::new();
+    builder
+      .place(Square::E1, Piece::King, Color::White)
+      .place(Square::A1, Piece::Rook, Color::White)
+      .place(Square::H1, Piece::Rook, Color::White)
+      .place(Square::E8, Piece::King, Color::Black)
+      .place(Square::A8, Piece::Rook, Color::Black)
+      .place(Square::H8, Piece::Rook, Color::Black)
+      .place(Square::E4, Piece::Knight, Color::White)
+      .can_castle_kside(Color::White, true)
+      .can_castle_qside(Color::White, true)
+      .can_castle_kside(Color::Black, true)
+      .can_castle_qside(Color::Black, true);
+    builder
+  }
+
   #[test]
   fn test_empty() {
     let pos = PositionBuilder::new().build();
@@ -592,7 +724,7 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_side_to_move() {
+  fn test_fen_side_to_move() {
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w - - 0 0").unwrap();
     assert_eq!(Color::White, pos.side_to_move());
 
@@ -600,11 +732,11 @@ mod tests {
     assert_eq!(Color::Black, pos.side_to_move());
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 W - - 0 0");
-    assert_eq!(ParseError::InvalidSideToMove, pos.unwrap_err());
+    assert_eq!(FENParseError::InvalidSideToMove, pos.unwrap_err());
   }
 
   #[test]
-  fn test_parse_castling() {
+  fn test_fen_castling() {
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w - - 0 0").unwrap();
     assert_eq!(false, pos.can_castle_kside(Color::White));
     assert_eq!(false, pos.can_castle_qside(Color::White));
@@ -625,21 +757,212 @@ mod tests {
   }
 
   #[test]
-  fn test_en_passant_target() {
+  fn test_fen_en_passant_target() {
     let pos = Position::from_fen("8/8/8/8/4P3/8/8/8 w - f3 0 0").unwrap();
     assert_eq!(Some(Square::F3), pos.en_passant_target());
   }
 
   #[test]
-  fn test_halfmove_clock() {
+  fn test_fen_halfmove_clock() {
     let pos = Position::from_fen("8/8/8/8/4P3/8/8/8 w - - 13 0").unwrap();
     assert_eq!(13, pos.halfmove_clock());
   }
 
   #[test]
-  fn test_fullmove_count() {
+  fn test_fen_fullmove_count() {
     let pos = Position::from_fen("8/8/8/8/4P3/8/8/8 w - - 0 13").unwrap();
     assert_eq!(13, pos.fullmove_count());
+  }
+
+  #[test]
+  fn test_parse_move_error() {
+    let pos = Position::startpos();
+    let cases = &[
+      ("h81", MoveParseError::TooShort),
+      ("h7xg8q", MoveParseError::TooLong),
+      (
+        "A2a4",
+        MoveParseError::InvalidSquare(SquareParseError::InvalidFile('A')),
+      ),
+      (
+        "c2xd3",
+        MoveParseError::InvalidSquare(SquareParseError::InvalidFile('x')),
+      ),
+      ("a2a8k", MoveParseError::InvalidPromotion('k')),
+      ("a2a8Q", MoveParseError::InvalidPromotion('Q')),
+      ("a3a4", MoveParseError::FromSquareEmpty),
+      ("b1d2", MoveParseError::ToSquareOccupied),
+    ];
+    for (move_str, err) in cases {
+      assert_eq!(Err(*err), pos.parse_long_algebraic_move(move_str));
+    }
+  }
+
+  #[test]
+  fn test_parse_move() {
+    let pos = Position::startpos();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::Move,
+        from: Square::B1,
+        to: Square::C3
+      }),
+      pos.parse_long_algebraic_move("b1c3")
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::Move,
+        from: Square::E2,
+        to: Square::E3,
+      }),
+      pos.parse_long_algebraic_move("e2e3")
+    );
+  }
+
+  #[test]
+  fn test_parse_capture() {
+    let pos = PositionBuilder::new()
+      .place(Square::E3, Piece::Bishop, Color::White)
+      .place(Square::D4, Piece::Knight, Color::Black)
+      .build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::Capture,
+        from: Square::E3,
+        to: Square::D4,
+      }),
+      pos.parse_long_algebraic_move("e3d4"),
+    );
+  }
+
+  #[test]
+  fn test_parse_double_pawn_push() {
+    let pos = Position::startpos();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::DoublePawnPush,
+        from: Square::E2,
+        to: Square::E4,
+      }),
+      pos.parse_long_algebraic_move("e2e4"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::DoublePawnPush,
+        from: Square::D7,
+        to: Square::D5,
+      }),
+      pos.parse_long_algebraic_move("d7d5"),
+    );
+  }
+
+  #[test]
+  fn test_parse_castle() {
+    let pos = builder_with_castling().build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::CastleKingside,
+        from: Square::E8,
+        to: Square::G8,
+      }),
+      pos.parse_long_algebraic_move("e8g8"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::CastleQueenside,
+        from: Square::E8,
+        to: Square::C8,
+      }),
+      pos.parse_long_algebraic_move("e8c8"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::CastleKingside,
+        from: Square::E1,
+        to: Square::G1,
+      }),
+      pos.parse_long_algebraic_move("e1g1"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::CastleQueenside,
+        from: Square::E1,
+        to: Square::C1,
+      }),
+      pos.parse_long_algebraic_move("e1c1"),
+    );
+  }
+
+  #[test]
+  fn test_parse_promotion() {
+    let pos = PositionBuilder::new()
+      .place(Square::A7, Piece::WhitePawn, Color::White)
+      .place(Square::B8, Piece::Knight, Color::Black)
+      .place(Square::A2, Piece::BlackPawn, Color::Black)
+      .place(Square::B1, Piece::Knight, Color::White)
+      .build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::PromotionBishop,
+        from: Square::A7,
+        to: Square::A8,
+      }),
+      pos.parse_long_algebraic_move("a7a8b"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::PromotionCaptureRook,
+        from: Square::A7,
+        to: Square::B8,
+      }),
+      pos.parse_long_algebraic_move("a7b8r"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::PromotionKnight,
+        from: Square::A2,
+        to: Square::A1,
+      }),
+      pos.parse_long_algebraic_move("a2a1n"),
+    );
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::PromotionCaptureQueen,
+        from: Square::A2,
+        to: Square::B1,
+      }),
+      pos.parse_long_algebraic_move("a2b1q"),
+    );
+  }
+
+  #[test]
+  fn test_parse_en_passant() {
+    let mut builder = PositionBuilder::new();
+    builder
+      .place(Square::C4, Piece::BlackPawn, Color::Black)
+      .place(Square::B4, Piece::WhitePawn, Color::White)
+      .place(Square::G5, Piece::WhitePawn, Color::White)
+      .place(Square::H5, Piece::BlackPawn, Color::Black);
+
+    let pos = builder.clone().en_passant_target(Some(Square::B3)).build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::EnPassantCapture,
+        from: Square::C4,
+        to: Square::B3,
+      }),
+      pos.parse_long_algebraic_move("c4b3"),
+    );
+
+    let pos = builder.clone().en_passant_target(Some(Square::H6)).build();
+    assert_eq!(
+      Ok(Move {
+        kind: MoveKind::EnPassantCapture,
+        from: Square::G5,
+        to: Square::H6,
+      }),
+      pos.parse_long_algebraic_move("g5h6"),
+    );
   }
 
   #[test]
@@ -700,14 +1023,7 @@ mod tests {
 
   #[test]
   fn test_castle() {
-    let mut builder = PositionBuilder::new();
-    builder
-      .place(Square::E1, Piece::King, Color::White)
-      .place(Square::A1, Piece::Rook, Color::White)
-      .place(Square::H1, Piece::Rook, Color::White)
-      .place(Square::E8, Piece::King, Color::Black)
-      .place(Square::A8, Piece::Rook, Color::Black)
-      .place(Square::H8, Piece::Rook, Color::Black);
+    let mut builder = builder_with_castling();
 
     let cases = &[
       (
@@ -924,19 +1240,7 @@ mod tests {
 
   #[test]
   fn test_update_castling_rights() {
-    let mut builder = PositionBuilder::new();
-    builder
-      .place(Square::E1, Piece::King, Color::White)
-      .place(Square::A1, Piece::Rook, Color::White)
-      .place(Square::H1, Piece::Rook, Color::White)
-      .place(Square::E8, Piece::King, Color::Black)
-      .place(Square::A8, Piece::Rook, Color::Black)
-      .place(Square::H8, Piece::Rook, Color::Black)
-      .place(Square::E4, Piece::Knight, Color::White)
-      .can_castle_kside(Color::White, true)
-      .can_castle_qside(Color::White, true)
-      .can_castle_kside(Color::Black, true)
-      .can_castle_qside(Color::Black, true);
+    let builder = builder_with_castling();
 
     let assert_castling =
       |pos: &Position, wk: bool, wq: bool, bk: bool, bq: bool| {

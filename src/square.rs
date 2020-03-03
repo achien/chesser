@@ -72,6 +72,14 @@ pub const FILES: [File; 8] = [
   File::H,
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SquareParseError {
+  TooLong,
+  TooShort,
+  InvalidFile(char),
+  InvalidRank(char),
+}
+
 impl Square {
   pub fn from(file: File, rank: Rank) -> Self {
     let index = 8 * (i32::from(rank)) + (i32::from(file));
@@ -116,10 +124,7 @@ impl Square {
     unsafe { Square::from_unchecked((s1_val + s2_val) / 2) }
   }
 
-  pub fn parse_algebraic(algebraic: &str) -> Result<Self, String> {
-    if algebraic.len() > 2 {
-      return Err(format!("Invalid square: {}", algebraic));
-    }
+  pub fn parse_algebraic(algebraic: &str) -> Result<Self, SquareParseError> {
     let mut chars = algebraic.chars();
     let file = match chars.next() {
       Some('a') => File::A,
@@ -130,7 +135,8 @@ impl Square {
       Some('f') => File::F,
       Some('g') => File::G,
       Some('h') => File::H,
-      _ => return Err(format!("Invalid square: {}", algebraic)),
+      Some(ch) => return Err(SquareParseError::InvalidFile(ch)),
+      None => return Err(SquareParseError::TooShort),
     };
     let rank = match chars.next() {
       Some('1') => Rank::R1,
@@ -141,10 +147,11 @@ impl Square {
       Some('6') => Rank::R6,
       Some('7') => Rank::R7,
       Some('8') => Rank::R8,
-      _ => return Err(format!("Invalid square: {}", algebraic)),
+      Some(ch) => return Err(SquareParseError::InvalidRank(ch)),
+      None => return Err(SquareParseError::TooShort),
     };
     if chars.next().is_some() {
-      return Err(format!("Invalid square: {}", algebraic));
+      return Err(SquareParseError::TooLong);
     }
     Ok(Self::from(file, rank))
   }

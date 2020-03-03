@@ -8,14 +8,17 @@ fn not_implemented(line: &str) {
 }
 
 fn parse_position(tokens: &mut SplitWhitespace) -> Result<Position, String> {
-  let position: Position;
+  let mut position: Position;
   match tokens.next() {
     Some("startpos") => {
       position = Position::startpos();
       match tokens.next() {
         Some("moves") => (),
-        Some(_) => {
-          return Err(String::from("unexpected token after position startpos"))
+        Some(t) => {
+          return Err(format!(
+            "unexpected token \"{}\" after \"position startpos\"",
+            t,
+          ))
         }
         None => return Ok(position),
       }
@@ -31,19 +34,28 @@ fn parse_position(tokens: &mut SplitWhitespace) -> Result<Position, String> {
       }
       match Position::from_fen(&fen) {
         Ok(pos) => position = pos,
-        Err(e) => return Err(format!("Error parsing fen: {:?}", e)),
+        Err(e) => {
+          return Err(format!("Error parsing fen \"{}\": {:?}", fen, e))
+        }
       }
     }
     _ => return Err(String::from("position needs startpos or fen")),
   }
 
-  for _m in tokens {
-    // m is a move
+  for algebraic_move in tokens {
+    let m = match position.parse_long_algebraic_move(algebraic_move) {
+      Ok(mv) => mv,
+      Err(e) => {
+        return Err(format!("Error parsing move {}: {:?}", algebraic_move, e))
+      }
+    };
+    position.make_move(m);
   }
   Ok(position)
 }
 
 pub fn run() {
+  let movegen = MoveGenerator::new();
   let mut position: Option<Position> = None;
   loop {
     let mut line = String::new();
@@ -67,14 +79,22 @@ pub fn run() {
         Ok(pos) => position = Some(pos),
         Err(msg) => eprintln!("{}", msg),
       },
-      Some("go") => match &position {
+      Some("go") => match &mut position {
         None => eprintln!("no position provided before 'go'"),
         Some(pos) => {
-          let moves = MoveGenerator::new().moves(&pos);
-          let first_move = moves.iter().next();
-          match first_move {
-            Some(m) => println!("bestmove {}", m.long_algebraic()),
-            None => eprintln!("no move found"),
+          let moves = movegen.moves(&pos);
+          let mut move_found = false;
+          for m in moves {
+            pos.make_move(m);
+            if !movegen.in_check(pos, pos.side_to_move().other()) {
+              println!("bestmove {}", m.long_algebraic());
+              move_found = true;
+              break;
+            }
+            pos.unmake_move();
+          }
+          if !move_found {
+            eprintln!("no move found");
           }
         }
       },
