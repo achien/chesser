@@ -32,7 +32,10 @@ fn parse_position(
       loop {
         match tokens.next() {
           Some("moves") => break,
-          Some(fen_part) => fen.push_str(fen_part),
+          Some(fen_part) => {
+            fen.push_str(fen_part);
+            fen.push_str(" ");
+          }
           None => break,
         }
       }
