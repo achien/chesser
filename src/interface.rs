@@ -1,6 +1,6 @@
 use chessier::move_generation::MoveGenerator;
 use chessier::position::*;
-use rand::seq::SliceRandom;
+use chessier::search::Search;
 use std::io::{self, Write};
 use std::str::SplitWhitespace;
 
@@ -89,21 +89,14 @@ pub fn run() {
       Some("go") => match &mut position {
         None => eprintln!("no position provided before 'go'"),
         Some(pos) => {
-          let mut moves = movegen.moves(&pos);
-          let mut rng = rand::thread_rng();
-          moves.shuffle(&mut rng);
-          let mut move_found = false;
-          for m in moves {
-            pos.make_move(m);
-            if !movegen.in_check(pos, pos.side_to_move().other()) {
+          let mut search = Search::new(&movegen);
+          let (score, m) = search.search(pos, 5);
+          match m {
+            Some(m) => {
+              println!("info score cp {}", score);
               println!("bestmove {}", m.long_algebraic());
-              move_found = true;
-              break;
             }
-            pos.unmake_move();
-          }
-          if !move_found {
-            eprintln!("no move found");
+            None => eprintln!("no move found"),
           }
         }
       },

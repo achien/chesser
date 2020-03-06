@@ -141,7 +141,6 @@ impl MoveGenerator {
         self.gen_castle_qside(moves, position, from, color);
       }
       Piece::Nil => (),
-      p => panic!("Unexpected piece {:?}", p),
     };
   }
 

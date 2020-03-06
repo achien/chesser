@@ -20,12 +20,14 @@ pub enum FENParseError {
   InvalidFullmoveCount,
 }
 
+#[derive(Clone)]
 struct MoveInfo {
   last_move: Move,
   piece: Piece,
   captured: Piece,
 }
 
+#[derive(Clone)]
 struct State {
   move_info: Option<MoveInfo>,
   can_castle_kside: [bool; 2],
@@ -36,6 +38,7 @@ struct State {
   halfmove_clock: i32,
 }
 
+#[derive(Clone)]
 pub struct Position {
   squares: [(Piece, Color); 64],
   side_to_move: Color,
