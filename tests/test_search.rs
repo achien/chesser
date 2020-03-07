@@ -24,6 +24,25 @@ fn test_fork() {
 }
 
 #[test]
+fn test_pin() {
+  let cases = &[
+    ("with bishop", "3k4/8/8/8/5b2/2R5/8/K7 b - - 0 1", "f4e5", 3),
+    ("with rook", "3k4/8/8/8/7r/8/8/K2N4 b - - 0 1", "h4h1", 3),
+    ("rook to queen", "q1k5/8/8/3r4/8/3PP3/PPP1B3/KR6 w - - 0 1", "e2f3", 3),
+  ];
+  test_positions(cases);
+}
+
+#[test]
+fn test_skewer() {
+  let cases = &[
+    ("with_bishop", "q7/8/8/3k4/8/8/1K6/3B4 w - - 0 1", "d1f3", 3),
+    ("with rook", "r2k4/8/8/8/8/8/1K6/7R w - - 0 1", "h1h8", 3),
+  ];
+  test_positions(cases);
+}
+
+#[test]
 fn test_mate_in_one() {
   let cases = &[
     ("back rank", "6k1/5ppp/8/8/8/8/8/1R4K1 w - - 0 1", "b1b8", 2),
