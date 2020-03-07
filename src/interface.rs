@@ -89,7 +89,7 @@ pub fn run() {
       Some("go") => match &mut position {
         None => eprintln!("no position provided before 'go'"),
         Some(pos) => {
-          let mut search = Search::new(&movegen);
+          let search = Search::new(&movegen);
           let (score, m) = search.search(pos, 5);
           match m {
             Some(m) => {

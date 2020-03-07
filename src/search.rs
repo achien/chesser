@@ -5,6 +5,8 @@ use crate::position::Position;
 use rand::seq::SliceRandom;
 use std::i32;
 
+const CHECKMATED: i32 = -1_000_000;
+
 pub struct Search<'a> {
   movegen: &'a MoveGenerator,
 }
@@ -14,11 +16,7 @@ impl<'a> Search<'a> {
     Search { movegen }
   }
 
-  pub fn search(
-    &mut self,
-    pos: &mut Position,
-    depth: i32,
-  ) -> (i32, Option<Move>) {
+  pub fn search(&self, pos: &mut Position, depth: i32) -> (i32, Option<Move>) {
     assert!(depth >= 0);
     self.alpha_beta(pos, i32::MIN / 2, i32::MAX / 2, depth)
   }
@@ -40,10 +38,12 @@ impl<'a> Search<'a> {
     let mut best_move: Option<Move> = None;
     let mut moves = self.movegen.moves(pos);
     let mut rng = rand::thread_rng();
+    let mut has_legal_move = false;
     moves.shuffle(&mut rng);
     for m in moves {
       pos.make_move(m);
       if !self.movegen.in_check(&pos, color) {
+        has_legal_move = true;
         let (opp_score, _) = self.alpha_beta(pos, -beta, -alpha, depth - 1);
         let score = -opp_score;
         if score >= beta {
@@ -56,6 +56,17 @@ impl<'a> Search<'a> {
         }
       }
       pos.unmake_move();
+    }
+    // If no legal move is found it's either checkmate or stalemate and we need
+    // to return that as the result
+    if !has_legal_move {
+      let score = if self.movegen.in_check(&pos, color) {
+        CHECKMATED
+      } else {
+        // Stalemate is 0
+        0
+      };
+      return (score, None);
     }
     (alpha, best_move)
   }

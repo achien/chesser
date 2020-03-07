@@ -1,3 +1,4 @@
 max_width = 79
 wrap_comments = true
 tab_spaces = 2
+use_small_heuristics = 'Max'
