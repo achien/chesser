@@ -38,6 +38,14 @@ impl BitAnd for Bitboard {
   }
 }
 
+impl BitAnd<Square> for Bitboard {
+  type Output = Bitboard;
+
+  fn bitand(self, s: Square) -> Self::Output {
+    self & Bitboard::from(s)
+  }
+}
+
 impl BitAndAssign for Bitboard {
   fn bitand_assign(&mut self, rhs: Self) {
     self.0 &= rhs.0
@@ -66,13 +74,17 @@ impl BitXorAssign for Bitboard {
 
 impl BitXorAssign<Square> for Bitboard {
   fn bitxor_assign(&mut self, s: Square) {
-    self.bitxor_assign(Bitboard::from(s));
+    self.0 ^= Bitboard::from(s).0;
   }
 }
 
 impl Bitboard {
   pub fn empty() -> Bitboard {
     Bitboard(0)
+  }
+
+  pub fn count(self) -> u32 {
+    self.0.count_ones()
   }
 
   pub fn first(self) -> Option<Square> {
@@ -91,6 +103,14 @@ impl Bitboard {
       self.0 &= !(1 << i32::from(s));
     }
     s
+  }
+
+  pub fn is_empty(self) -> bool {
+    self.0 == 0
+  }
+
+  pub fn is_not_empty(self) -> bool {
+    !self.is_empty()
   }
 }
 
@@ -131,7 +151,7 @@ mod tests {
     for s in squares() {
       let mut bb = Bitboard::from(s);
       assert_eq!(s, bb.pop().unwrap(), "{:?}", s);
-      assert_eq!(bb, Bitboard::empty());
+      assert!(bb.is_empty());
     }
   }
 
@@ -160,7 +180,7 @@ mod tests {
       // it consumes if we explicitly do a mutable borrow
       let squares: Vec<Square> = (&mut bb).collect();
       assert_eq!(vec![s], squares, "{:?}", s);
-      assert_eq!(Bitboard::empty(), bb);
+      assert!(bb.is_empty());
 
       // When iterating with a for loop, the bitboard is consumed (even if it
       // is not defined as mut)
@@ -170,7 +190,7 @@ mod tests {
         squares.push(sq);
       }
       assert_eq!(vec![s], squares, "{:?}", s);
-      assert_eq!(Bitboard::empty(), bb);
+      assert!(bb.is_empty());
     }
   }
 

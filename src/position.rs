@@ -43,7 +43,7 @@ struct State {
 pub struct Position {
   squares: [(Piece, Color); 64],
   color_bb: [Bitboard; 2],
-  color_piece_bb: [[Bitboard; NUM_PIECES]; 2],
+  piece_bb: [[Bitboard; NUM_PIECES]; 2],
 
   side_to_move: Color,
   // Move count.  Starts at 1 and is incremented after Black moves
@@ -137,7 +137,7 @@ impl PositionBuilder {
     let mut position = Position {
       squares: [EMPTY_SQUARE; 64],
       color_bb: [Bitboard::empty(); 2],
-      color_piece_bb: [[Bitboard::empty(); NUM_PIECES]; 2],
+      piece_bb: [[Bitboard::empty(); NUM_PIECES]; 2],
 
       side_to_move: self.side_to_move,
       fullmove_count: self.fullmove_count,
@@ -270,8 +270,16 @@ impl Position {
     self.squares[square as usize]
   }
 
+  pub fn occupied(&self) -> Bitboard {
+    self.color_bb[0] | self.color_bb[1]
+  }
+
   pub fn occupied_by_color(&self, color: Color) -> Bitboard {
     self.color_bb[color as usize]
+  }
+
+  pub fn occupied_by_piece(&self, color: Color, piece: Piece) -> Bitboard {
+    self.piece_bb[color as usize][piece as usize]
   }
 
   pub fn side_to_move(&self) -> Color {
@@ -308,7 +316,7 @@ impl Position {
     debug_assert!(self.at(square) == EMPTY_SQUARE);
     self.squares[square as usize] = (piece, color);
     self.color_bb[color as usize] |= square;
-    self.color_piece_bb[color as usize][piece as usize] |= square;
+    self.piece_bb[color as usize][piece as usize] |= square;
     self
   }
 
@@ -327,7 +335,7 @@ impl Position {
     debug_assert!(piece != Piece::Nil);
     self.squares[square as usize] = EMPTY_SQUARE;
     self.color_bb[color as usize] ^= square;
-    self.color_piece_bb[color as usize][piece as usize] ^= square;
+    self.piece_bb[color as usize][piece as usize] ^= square;
     self
   }
 
@@ -344,7 +352,7 @@ impl Position {
     self.squares[to as usize] = (piece, color);
     let diff = Bitboard::from(from) | Bitboard::from(to);
     self.color_bb[color as usize] ^= diff;
-    self.color_piece_bb[color as usize][piece as usize] ^= diff;
+    self.piece_bb[color as usize][piece as usize] ^= diff;
     self
   }
 

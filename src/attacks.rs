@@ -31,6 +31,18 @@ impl Attacks {
     self.king[s as usize]
   }
 
+  pub fn bishop(&self, s: Square, occupancy: Bitboard) -> Bitboard {
+    gen_bishop(s, occupancy)
+  }
+
+  pub fn rook(&self, s: Square, occupancy: Bitboard) -> Bitboard {
+    gen_rook(s, occupancy)
+  }
+
+  pub fn queen(&self, s: Square, occupancy: Bitboard) -> Bitboard {
+    gen_bishop(s, occupancy) | gen_rook(s, occupancy)
+  }
+
   pub fn new() -> Self {
     let mut wpawn = [Bitboard::empty(); 64];
     let mut bpawn = [Bitboard::empty(); 64];
@@ -81,4 +93,38 @@ fn gen_offset(
     }
   }
   res
+}
+
+fn gen_bishop(s: Square, occupancy: Bitboard) -> Bitboard {
+  gen_ray(s, occupancy, -1, -1)
+    | gen_ray(s, occupancy, -1, 1)
+    | gen_ray(s, occupancy, 1, -1)
+    | gen_ray(s, occupancy, 1, 1)
+}
+
+fn gen_rook(s: Square, occupancy: Bitboard) -> Bitboard {
+  gen_ray(s, occupancy, 0, -1)
+    | gen_ray(s, occupancy, 0, 1)
+    | gen_ray(s, occupancy, -1, 0)
+    | gen_ray(s, occupancy, 1, 0)
+}
+
+fn gen_ray(square: Square, occupancy: Bitboard, df: i32, dr: i32) -> Bitboard {
+  debug_assert!(df.abs() <= 1);
+  debug_assert!(dr.abs() <= 1);
+  debug_assert!(df != 0 || dr != 0);
+  let mut res = Bitboard::empty();
+  let mut square = square;
+  loop {
+    square = match square.offset_file(df).and_then(|s| s.offset_rank(dr)) {
+      // We off the edge of the board
+      None => return res,
+      Some(s) => s,
+    };
+    res |= square;
+    if (occupancy & square).is_not_empty() {
+      // The square is occupied and blocks the rest of the ray
+      return res;
+    }
+  }
 }

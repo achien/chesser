@@ -113,7 +113,7 @@ impl MoveGenerator {
         from,
         color,
         Piece::Bishop,
-        self.bishop_attacks(position, from),
+        self.attacks.bishop(from, position.occupied()),
       ),
       Piece::Rook => self.gen_attack_moves(
         moves,
@@ -121,7 +121,7 @@ impl MoveGenerator {
         from,
         color,
         Piece::Rook,
-        self.rook_attacks(position, from),
+        self.attacks.rook(from, position.occupied()),
       ),
       Piece::Queen => self.gen_attack_moves(
         moves,
@@ -129,7 +129,7 @@ impl MoveGenerator {
         from,
         color,
         Piece::Queen,
-        self.queen_attacks(position, from),
+        self.attacks.queen(from, position.occupied()),
       ),
       Piece::King => {
         self.gen_attack_moves(
@@ -145,51 +145,6 @@ impl MoveGenerator {
       }
       Piece::Nil => panic!("Unexpected move_from on empty square"),
     };
-  }
-
-  fn ray_attacks(
-    &self,
-    position: &Position,
-    square: Square,
-    df: i32,
-    dr: i32,
-  ) -> Bitboard {
-    debug_assert!(df.abs() <= 1);
-    debug_assert!(dr.abs() <= 1);
-    debug_assert!(df != 0 || dr != 0);
-    let mut res = Bitboard::empty();
-    let mut square = square;
-    loop {
-      square = match square.offset_file(df).and_then(|s| s.offset_rank(dr)) {
-        // We off the edge of the board
-        None => return res,
-        Some(s) => s,
-      };
-      res |= square;
-      let (piece, _) = position.at(square);
-      if piece != Piece::Nil {
-        // The square is occupied and blocks the rest of the ray
-        return res;
-      }
-    }
-  }
-
-  fn bishop_attacks(&self, position: &Position, square: Square) -> Bitboard {
-    self.ray_attacks(position, square, -1, -1)
-      | self.ray_attacks(position, square, -1, 1)
-      | self.ray_attacks(position, square, 1, -1)
-      | self.ray_attacks(position, square, 1, 1)
-  }
-
-  fn rook_attacks(&self, position: &Position, square: Square) -> Bitboard {
-    self.ray_attacks(position, square, 0, -1)
-      | self.ray_attacks(position, square, 0, 1)
-      | self.ray_attacks(position, square, -1, 0)
-      | self.ray_attacks(position, square, 1, 0)
-  }
-
-  fn queen_attacks(&self, position: &Position, square: Square) -> Bitboard {
-    self.bishop_attacks(position, square) | self.rook_attacks(position, square)
   }
 
   fn gen_attack_moves(
@@ -373,9 +328,9 @@ impl MoveGenerator {
         Piece::WhitePawn => self.attacks.wpawn(square),
         Piece::BlackPawn => self.attacks.bpawn(square),
         Piece::Knight => self.attacks.knight(square),
-        Piece::Bishop => self.bishop_attacks(position, square),
-        Piece::Rook => self.rook_attacks(position, square),
-        Piece::Queen => self.queen_attacks(position, square),
+        Piece::Bishop => self.attacks.bishop(square, position.occupied()),
+        Piece::Rook => self.attacks.rook(square, position.occupied()),
+        Piece::Queen => self.attacks.queen(square, position.occupied()),
         Piece::King => self.attacks.king(square),
         p => panic!("Unexpected piece: {:?}", p),
       };
@@ -386,12 +341,53 @@ impl MoveGenerator {
     attacked
   }
 
-  pub fn in_check(&self, position: &Position, color: Color) -> bool {
-    let attacked = self.attacked_squares(position, color.other());
-    squares().any(|square| {
-      let (piece, piece_color) = position.at(square);
-      piece_color == color && piece == Piece::King && attacked[square as usize]
-    })
+  pub fn in_check(&self, pos: &Position, color: Color) -> bool {
+    let king_squares = pos.occupied_by_piece(color, Piece::King);
+    debug_assert!(king_squares.count() == 1);
+    let king_sq = king_squares.first().unwrap();
+    let opp_color = color.other();
+    // Attacks are symmetric
+    if (self.attacks.wpawn(king_sq)
+      & pos.occupied_by_piece(opp_color, Piece::BlackPawn))
+    .is_not_empty()
+    {
+      return true;
+    }
+    if (self.attacks.bpawn(king_sq)
+      & pos.occupied_by_piece(opp_color, Piece::WhitePawn))
+    .is_not_empty()
+    {
+      return true;
+    }
+    if (self.attacks.knight(king_sq)
+      & pos.occupied_by_piece(opp_color, Piece::Knight))
+    .is_not_empty()
+    {
+      return true;
+    }
+    if (self.attacks.king(king_sq)
+      & pos.occupied_by_piece(opp_color, Piece::King))
+    .is_not_empty()
+    {
+      return true;
+    }
+    let bishop_attacks = self.attacks.bishop(king_sq, pos.occupied());
+    if (bishop_attacks & pos.occupied_by_piece(opp_color, Piece::Bishop))
+      .is_not_empty()
+      || (bishop_attacks & pos.occupied_by_piece(opp_color, Piece::Queen))
+        .is_not_empty()
+    {
+      return true;
+    }
+    let rook_attacks = self.attacks.rook(king_sq, pos.occupied());
+    if (rook_attacks & pos.occupied_by_piece(opp_color, Piece::Rook))
+      .is_not_empty()
+      || (rook_attacks & pos.occupied_by_piece(opp_color, Piece::Queen))
+        .is_not_empty()
+    {
+      return true;
+    }
+    false
   }
 
   /// Parses a move and makes sure it is pseudo-legal.  Right now it only
