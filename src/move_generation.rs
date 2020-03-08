@@ -6,6 +6,8 @@ use crate::position::*;
 use crate::square::*;
 use num_enum::IntoPrimitive;
 
+const CASTLE_PERF_TEST_ALL_ATTACKS: bool = false;
+
 #[derive(Debug, Clone, Copy, IntoPrimitive)]
 #[repr(i32)]
 enum PawnDirection {
@@ -264,11 +266,21 @@ impl MoveGenerator {
       }
     }
     // King cannot be in check, pass through check, or end up in check
-    let attacked_squares = self.attacked_squares(position, color.other());
-    for &file in &[File::E, File::F, File::G] {
-      let square = Square::from(file, rank);
-      if attacked_squares[square as usize] {
+    if CASTLE_PERF_TEST_ALL_ATTACKS {
+      let attacked_squares = self.attacked_squares(position, color.other());
+      let relevant_squares = Bitboard::from(rank)
+        & (Bitboard::from(File::E)
+          | Bitboard::from(File::F)
+          | Bitboard::from(File::G));
+      if (attacked_squares & relevant_squares).is_not_empty() {
         return;
+      }
+    } else {
+      for &file in &[File::E, File::F, File::G] {
+        let square = Square::from(file, rank);
+        if self.is_attacked_by(position, square, color.other()) {
+          return;
+        }
       }
     }
     moves.push(Move {
@@ -305,11 +317,21 @@ impl MoveGenerator {
       }
     }
     // King cannot be in check, pass through check, or end up in check
-    let attacked_squares = self.attacked_squares(position, color.other());
-    for &file in &[File::E, File::D, File::C] {
-      let square = Square::from(file, rank);
-      if attacked_squares[square as usize] {
+    if CASTLE_PERF_TEST_ALL_ATTACKS {
+      let attacked_squares = self.attacked_squares(position, color.other());
+      let relevant_squares = Bitboard::from(rank)
+        & (Bitboard::from(File::E)
+          | Bitboard::from(File::D)
+          | Bitboard::from(File::C));
+      if (attacked_squares & relevant_squares).is_not_empty() {
         return;
+      }
+    } else {
+      for &file in &[File::E, File::D, File::C] {
+        let square = Square::from(file, rank);
+        if self.is_attacked_by(position, square, color.other()) {
+          return;
+        }
       }
     }
     moves.push(Move {
@@ -319,8 +341,8 @@ impl MoveGenerator {
     });
   }
 
-  fn attacked_squares(&self, position: &Position, color: Color) -> [bool; 64] {
-    let mut attacked = [false; 64];
+  fn attacked_squares(&self, position: &Position, color: Color) -> Bitboard {
+    let mut attacked = Bitboard::empty();
     for square in position.occupied_by_color(color) {
       let (piece, piece_color) = position.at(square);
       debug_assert!(piece != Piece::Nil && piece_color == color);
@@ -334,60 +356,62 @@ impl MoveGenerator {
         Piece::King => self.attacks.king(square),
         p => panic!("Unexpected piece: {:?}", p),
       };
-      for s in squares {
-        attacked[s as usize] = true;
-      }
+      attacked |= squares;
     }
     attacked
+  }
+
+  pub fn is_attacked_by(
+    &self,
+    pos: &Position,
+    s: Square,
+    color: Color,
+  ) -> bool {
+    // Attacks are symmetric
+    if (self.attacks.wpawn(s) & pos.occupied_by_piece(color, Piece::BlackPawn))
+      .is_not_empty()
+    {
+      return true;
+    }
+    if (self.attacks.bpawn(s) & pos.occupied_by_piece(color, Piece::WhitePawn))
+      .is_not_empty()
+    {
+      return true;
+    }
+    if (self.attacks.knight(s) & pos.occupied_by_piece(color, Piece::Knight))
+      .is_not_empty()
+    {
+      return true;
+    }
+    if (self.attacks.king(s) & pos.occupied_by_piece(color, Piece::King))
+      .is_not_empty()
+    {
+      return true;
+    }
+    let bishop_attacks = self.attacks.bishop(s, pos.occupied());
+    if (bishop_attacks & pos.occupied_by_piece(color, Piece::Bishop))
+      .is_not_empty()
+      || (bishop_attacks & pos.occupied_by_piece(color, Piece::Queen))
+        .is_not_empty()
+    {
+      return true;
+    }
+    let rook_attacks = self.attacks.rook(s, pos.occupied());
+    if (rook_attacks & pos.occupied_by_piece(color, Piece::Rook))
+      .is_not_empty()
+      || (rook_attacks & pos.occupied_by_piece(color, Piece::Queen))
+        .is_not_empty()
+    {
+      return true;
+    }
+    false
   }
 
   pub fn in_check(&self, pos: &Position, color: Color) -> bool {
     let king_squares = pos.occupied_by_piece(color, Piece::King);
     debug_assert!(king_squares.count() == 1);
     let king_sq = king_squares.first().unwrap();
-    let opp_color = color.other();
-    // Attacks are symmetric
-    if (self.attacks.wpawn(king_sq)
-      & pos.occupied_by_piece(opp_color, Piece::BlackPawn))
-    .is_not_empty()
-    {
-      return true;
-    }
-    if (self.attacks.bpawn(king_sq)
-      & pos.occupied_by_piece(opp_color, Piece::WhitePawn))
-    .is_not_empty()
-    {
-      return true;
-    }
-    if (self.attacks.knight(king_sq)
-      & pos.occupied_by_piece(opp_color, Piece::Knight))
-    .is_not_empty()
-    {
-      return true;
-    }
-    if (self.attacks.king(king_sq)
-      & pos.occupied_by_piece(opp_color, Piece::King))
-    .is_not_empty()
-    {
-      return true;
-    }
-    let bishop_attacks = self.attacks.bishop(king_sq, pos.occupied());
-    if (bishop_attacks & pos.occupied_by_piece(opp_color, Piece::Bishop))
-      .is_not_empty()
-      || (bishop_attacks & pos.occupied_by_piece(opp_color, Piece::Queen))
-        .is_not_empty()
-    {
-      return true;
-    }
-    let rook_attacks = self.attacks.rook(king_sq, pos.occupied());
-    if (rook_attacks & pos.occupied_by_piece(opp_color, Piece::Rook))
-      .is_not_empty()
-      || (rook_attacks & pos.occupied_by_piece(opp_color, Piece::Queen))
-        .is_not_empty()
-    {
-      return true;
-    }
-    false
+    self.is_attacked_by(pos, king_sq, color.other())
   }
 
   /// Parses a move and makes sure it is pseudo-legal.  Right now it only

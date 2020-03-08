@@ -60,6 +60,12 @@ impl BitOr for Bitboard {
   }
 }
 
+impl BitOrAssign for Bitboard {
+  fn bitor_assign(&mut self, rhs: Self) {
+    self.0 |= rhs.0;
+  }
+}
+
 impl BitOrAssign<Square> for Bitboard {
   fn bitor_assign(&mut self, s: Square) {
     self.0 |= Bitboard::from(s).0;
