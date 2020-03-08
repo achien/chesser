@@ -127,6 +127,15 @@ mod tests {
   }
 
   #[test]
+  fn test_pop_consumes() {
+    for s in squares() {
+      let mut bb = Bitboard::from(s);
+      assert_eq!(s, bb.pop().unwrap(), "{:?}", s);
+      assert_eq!(bb, Bitboard::empty());
+    }
+  }
+
+  #[test]
   fn test_iteration() {
     for s in squares() {
       // Verify that it
@@ -134,6 +143,34 @@ mod tests {
         assert_eq!(0, i, "{:?}", s);
         assert_eq!(s, iterated, "{:?}", s);
       }
+    }
+  }
+
+  #[test]
+  fn test_iter_consumes() {
+    // Enumerates some cases where the iterator consumes the bitboard and
+    // some cases where it does not.  I don't know why it behaves this way
+    // though I'm guessing it is related to copying?
+    for s in squares() {
+      let mut bb = Bitboard::from(s);
+      // collect does not consume if used like this
+      let squares: Vec<Square> = bb.collect();
+      assert_eq!(vec![s], squares, "{:?}", s);
+      assert_eq!(Bitboard::from(s), bb);
+      // it consumes if we explicitly do a mutable borrow
+      let squares: Vec<Square> = (&mut bb).collect();
+      assert_eq!(vec![s], squares, "{:?}", s);
+      assert_eq!(Bitboard::empty(), bb);
+
+      // When iterating with a for loop, the bitboard is consumed (even if it
+      // is not defined as mut)
+      let bb2 = Bitboard::from(s);
+      let mut squares: Vec<Square> = vec![];
+      for sq in bb2 {
+        squares.push(sq);
+      }
+      assert_eq!(vec![s], squares, "{:?}", s);
+      assert_eq!(Bitboard::empty(), bb);
     }
   }
 
