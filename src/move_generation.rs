@@ -1,3 +1,5 @@
+use crate::attacks::*;
+use crate::bitboard::*;
 use crate::moves::*;
 use crate::piece::*;
 use crate::position::*;
@@ -23,7 +25,9 @@ pub enum MoveParseError {
   IllegalMove,
 }
 
-pub struct MoveGenerator {}
+pub struct MoveGenerator {
+  attacks: Attacks,
+}
 
 impl Default for MoveGenerator {
   fn default() -> Self {
@@ -33,7 +37,7 @@ impl Default for MoveGenerator {
 
 impl MoveGenerator {
   pub fn new() -> Self {
-    Self {}
+    Self { attacks: Attacks::new() }
   }
 
   pub fn moves(&self, position: &Position) -> Vec<Move> {
@@ -42,7 +46,7 @@ impl MoveGenerator {
 
   fn moves_for_color(&self, position: &Position, color: Color) -> Vec<Move> {
     let mut moves: Vec<Move> = Vec::new();
-    for square in squares() {
+    for square in position.occupied_by_color(color) {
       self.moves_from(&mut moves, position, color, square);
     }
     moves
@@ -56,16 +60,15 @@ impl MoveGenerator {
     from: Square,
   ) {
     let (piece, piece_color) = position.at(from);
-    if piece_color != color {
-      return;
-    }
+    debug_assert!(piece != Piece::Nil);
+    debug_assert!(piece_color == color);
     match piece {
       Piece::WhitePawn => {
         self.gen_pawn_captures(
           moves,
           position,
           from,
-          &self.wpawn_attacks(from),
+          self.attacks.wpawn(from),
           color,
           Rank::R8,
         );
@@ -83,7 +86,7 @@ impl MoveGenerator {
           moves,
           position,
           from,
-          &self.bpawn_attacks(from),
+          self.attacks.bpawn(from),
           color,
           Rank::R1,
         );
@@ -102,7 +105,7 @@ impl MoveGenerator {
         from,
         color,
         Piece::Knight,
-        &self.knight_attacks(from),
+        self.attacks.knight(from),
       ),
       Piece::Bishop => self.gen_attack_moves(
         moves,
@@ -110,7 +113,7 @@ impl MoveGenerator {
         from,
         color,
         Piece::Bishop,
-        &self.bishop_attacks(position, from),
+        self.bishop_attacks(position, from),
       ),
       Piece::Rook => self.gen_attack_moves(
         moves,
@@ -118,7 +121,7 @@ impl MoveGenerator {
         from,
         color,
         Piece::Rook,
-        &self.rook_attacks(position, from),
+        self.rook_attacks(position, from),
       ),
       Piece::Queen => self.gen_attack_moves(
         moves,
@@ -126,7 +129,7 @@ impl MoveGenerator {
         from,
         color,
         Piece::Queen,
-        &self.queen_attacks(position, from),
+        self.queen_attacks(position, from),
       ),
       Piece::King => {
         self.gen_attack_moves(
@@ -135,66 +138,13 @@ impl MoveGenerator {
           from,
           color,
           Piece::King,
-          &self.king_attacks(from),
+          self.attacks.king(from),
         );
         self.gen_castle_kside(moves, position, from, color);
         self.gen_castle_qside(moves, position, from, color);
       }
-      Piece::Nil => (),
+      Piece::Nil => panic!("Unexpected move_from on empty square"),
     };
-  }
-
-  fn offset_attacks(
-    &self,
-    square: Square,
-    offsets: &[(/* ∆file */ i32, /* ∆rank */ i32)],
-  ) -> Vec<Square> {
-    offsets
-      .iter()
-      .map(|&(df, dr)| square.offset_file(df).and_then(|s| s.offset_rank(dr)))
-      .filter(|x| x.is_some())
-      .map(|x| x.unwrap())
-      .collect()
-  }
-
-  fn knight_attacks(&self, square: Square) -> Vec<Square> {
-    self.offset_attacks(
-      square,
-      &[
-        (-2, -1),
-        (-2, 1),
-        (-1, -2),
-        (-1, 2),
-        (1, -2),
-        (1, 2),
-        (2, -1),
-        (2, 1),
-      ],
-    )
-  }
-
-  fn king_attacks(&self, square: Square) -> Vec<Square> {
-    self.offset_attacks(
-      square,
-      &[
-        (-1, -1),
-        (-1, 0),
-        (-1, 1),
-        (0, -1),
-        (0, 1),
-        (1, -1),
-        (1, 0),
-        (1, 1),
-      ],
-    )
-  }
-
-  fn wpawn_attacks(&self, square: Square) -> Vec<Square> {
-    self.offset_attacks(square, &[(-1, 1), (1, 1)])
-  }
-
-  fn bpawn_attacks(&self, square: Square) -> Vec<Square> {
-    self.offset_attacks(square, &[(-1, -1), (1, -1)])
   }
 
   fn ray_attacks(
@@ -203,11 +153,11 @@ impl MoveGenerator {
     square: Square,
     df: i32,
     dr: i32,
-  ) -> Vec<Square> {
+  ) -> Bitboard {
     debug_assert!(df.abs() <= 1);
     debug_assert!(dr.abs() <= 1);
     debug_assert!(df != 0 || dr != 0);
-    let mut res = Vec::new();
+    let mut res = Bitboard::empty();
     let mut square = square;
     loop {
       square = match square.offset_file(df).and_then(|s| s.offset_rank(dr)) {
@@ -215,7 +165,7 @@ impl MoveGenerator {
         None => return res,
         Some(s) => s,
       };
-      res.push(square);
+      res |= square;
       let (piece, _) = position.at(square);
       if piece != Piece::Nil {
         // The square is occupied and blocks the rest of the ray
@@ -224,36 +174,22 @@ impl MoveGenerator {
     }
   }
 
-  fn bishop_attacks(
-    &self,
-    position: &Position,
-    square: Square,
-  ) -> Vec<Square> {
-    [
-      self.ray_attacks(position, square, -1, -1),
-      self.ray_attacks(position, square, -1, 1),
-      self.ray_attacks(position, square, 1, -1),
-      self.ray_attacks(position, square, 1, 1),
-    ]
-    .concat()
+  fn bishop_attacks(&self, position: &Position, square: Square) -> Bitboard {
+    self.ray_attacks(position, square, -1, -1)
+      | self.ray_attacks(position, square, -1, 1)
+      | self.ray_attacks(position, square, 1, -1)
+      | self.ray_attacks(position, square, 1, 1)
   }
 
-  fn rook_attacks(&self, position: &Position, square: Square) -> Vec<Square> {
-    [
-      self.ray_attacks(position, square, 0, -1),
-      self.ray_attacks(position, square, 0, 1),
-      self.ray_attacks(position, square, -1, 0),
-      self.ray_attacks(position, square, 1, 0),
-    ]
-    .concat()
+  fn rook_attacks(&self, position: &Position, square: Square) -> Bitboard {
+    self.ray_attacks(position, square, 0, -1)
+      | self.ray_attacks(position, square, 0, 1)
+      | self.ray_attacks(position, square, -1, 0)
+      | self.ray_attacks(position, square, 1, 0)
   }
 
-  fn queen_attacks(&self, position: &Position, square: Square) -> Vec<Square> {
-    [
-      self.bishop_attacks(position, square),
-      self.rook_attacks(position, square),
-    ]
-    .concat()
+  fn queen_attacks(&self, position: &Position, square: Square) -> Bitboard {
+    self.bishop_attacks(position, square) | self.rook_attacks(position, square)
   }
 
   fn gen_attack_moves(
@@ -263,23 +199,15 @@ impl MoveGenerator {
     from: Square,
     color: Color,
     piece: Piece,
-    to_squares: &[Square],
+    to_squares: Bitboard,
   ) {
     debug_assert!(position.at(from) == (piece, color));
-    for &to in to_squares {
+    for to in to_squares {
       let (to_piece, to_piece_color) = position.at(to);
       if to_piece == Piece::Nil {
-        moves.push(Move {
-          kind: MoveKind::Move,
-          from,
-          to,
-        });
+        moves.push(Move { kind: MoveKind::Move, from, to });
       } else if to_piece_color != color {
-        moves.push(Move {
-          kind: MoveKind::Capture,
-          from,
-          to,
-        });
+        moves.push(Move { kind: MoveKind::Capture, from, to });
       }
     }
   }
@@ -289,19 +217,15 @@ impl MoveGenerator {
     moves: &mut Vec<Move>,
     position: &Position,
     from: Square,
-    to_squares: &[Square],
+    to_squares: Bitboard,
     color: Color,
     promotion_rank: Rank,
   ) {
-    for &to in to_squares {
+    for to in to_squares {
       let (to_piece, to_piece_color) = position.at(to);
       if to_piece != Piece::Nil && to_piece_color != color {
         if to.rank() != promotion_rank {
-          moves.push(Move {
-            kind: MoveKind::Capture,
-            from,
-            to,
-          });
+          moves.push(Move { kind: MoveKind::Capture, from, to });
         } else {
           let kinds = &[
             MoveKind::PromotionCaptureKnight,
@@ -310,20 +234,12 @@ impl MoveGenerator {
             MoveKind::PromotionCaptureQueen,
           ];
           for kind in kinds {
-            moves.push(Move {
-              kind: *kind,
-              from,
-              to,
-            });
+            moves.push(Move { kind: *kind, from, to });
           }
         }
       } else if let Some(ep_target) = position.en_passant_target() {
         if to == ep_target && to_piece == Piece::Nil {
-          moves.push(Move {
-            kind: MoveKind::EnPassantCapture,
-            from,
-            to,
-          });
+          moves.push(Move { kind: MoveKind::EnPassantCapture, from, to });
         }
       }
     }
@@ -351,28 +267,16 @@ impl MoveGenerator {
         MoveKind::PromotionQueen,
       ];
       for kind in kinds {
-        moves.push(Move {
-          kind: *kind,
-          from,
-          to,
-        });
+        moves.push(Move { kind: *kind, from, to });
       }
     } else {
-      moves.push(Move {
-        kind: MoveKind::Move,
-        from,
-        to,
-      });
+      moves.push(Move { kind: MoveKind::Move, from, to });
       // If single push succeeds double push might be possible
       if from.rank() == starting_rank {
         let to = to.offset_rank(direction.into()).unwrap();
         let (to_piece, _) = position.at(to);
         if to_piece == Piece::Nil {
-          moves.push(Move {
-            kind: MoveKind::DoublePawnPush,
-            from,
-            to,
-          });
+          moves.push(Move { kind: MoveKind::DoublePawnPush, from, to });
         }
       }
     }
@@ -462,22 +366,21 @@ impl MoveGenerator {
 
   fn attacked_squares(&self, position: &Position, color: Color) -> [bool; 64] {
     let mut attacked = [false; 64];
-    for square in squares() {
+    for square in position.occupied_by_color(color) {
       let (piece, piece_color) = position.at(square);
-      if piece != Piece::Nil && piece_color == color {
-        let squares = match piece {
-          Piece::WhitePawn => self.wpawn_attacks(square),
-          Piece::BlackPawn => self.bpawn_attacks(square),
-          Piece::Knight => self.knight_attacks(square),
-          Piece::Bishop => self.bishop_attacks(position, square),
-          Piece::Rook => self.rook_attacks(position, square),
-          Piece::Queen => self.queen_attacks(position, square),
-          Piece::King => self.king_attacks(square),
-          p => panic!("Unexpected piece: {:?}", p),
-        };
-        for s in squares {
-          attacked[s as usize] = true;
-        }
+      debug_assert!(piece != Piece::Nil && piece_color == color);
+      let squares = match piece {
+        Piece::WhitePawn => self.attacks.wpawn(square),
+        Piece::BlackPawn => self.attacks.bpawn(square),
+        Piece::Knight => self.attacks.knight(square),
+        Piece::Bishop => self.bishop_attacks(position, square),
+        Piece::Rook => self.rook_attacks(position, square),
+        Piece::Queen => self.queen_attacks(position, square),
+        Piece::King => self.attacks.king(square),
+        p => panic!("Unexpected piece: {:?}", p),
+      };
+      for s in squares {
+        attacked[s as usize] = true;
       }
     }
     attacked
@@ -559,11 +462,7 @@ impl MoveGenerator {
     if Some(to) == pos.en_passant_target()
       && (from_piece == Piece::WhitePawn || from_piece == Piece::BlackPawn)
     {
-      return Ok(Move {
-        kind: MoveKind::EnPassantCapture,
-        from,
-        to,
-      });
+      return Ok(Move { kind: MoveKind::EnPassantCapture, from, to });
     }
 
     if (from_piece == Piece::WhitePawn
@@ -573,11 +472,7 @@ impl MoveGenerator {
         && from.rank() == Rank::R7
         && to.rank() == Rank::R5)
     {
-      return Ok(Move {
-        kind: MoveKind::DoublePawnPush,
-        from,
-        to,
-      });
+      return Ok(Move { kind: MoveKind::DoublePawnPush, from, to });
     }
 
     // If king is moving from file E to C or G then it's castling.  This
@@ -585,17 +480,9 @@ impl MoveGenerator {
     // on the home rank or that the king has castling rights.
     if from_piece == Piece::King && from.file() == File::E {
       if to.file() == File::G {
-        return Ok(Move {
-          kind: MoveKind::CastleKingside,
-          from,
-          to,
-        });
+        return Ok(Move { kind: MoveKind::CastleKingside, from, to });
       } else if to.file() == File::C {
-        return Ok(Move {
-          kind: MoveKind::CastleQueenside,
-          from,
-          to,
-        });
+        return Ok(Move { kind: MoveKind::CastleQueenside, from, to });
       }
     }
 
@@ -638,28 +525,16 @@ mod tests {
     let cases: &[(Square, &[Square])] = &[
       (Square::A1, &[Square::B3, Square::C2]),
       (Square::B1, &[Square::A3, Square::C3, Square::D2]),
-      (
-        Square::C1,
-        &[Square::A2, Square::B3, Square::D3, Square::E2],
-      ),
+      (Square::C1, &[Square::A2, Square::B3, Square::D3, Square::E2]),
       (Square::G1, &[Square::E2, Square::F3, Square::H3]),
       (Square::H1, &[Square::F2, Square::G3]),
       (Square::H2, &[Square::F1, Square::F3, Square::G4]),
-      (
-        Square::H3,
-        &[Square::G1, Square::F2, Square::F4, Square::G5],
-      ),
+      (Square::H3, &[Square::G1, Square::F2, Square::F4, Square::G5]),
       (Square::A8, &[Square::B6, Square::C7]),
       (Square::A7, &[Square::B5, Square::C6, Square::C8]),
-      (
-        Square::A6,
-        &[Square::B4, Square::B8, Square::C5, Square::C7],
-      ),
+      (Square::A6, &[Square::B4, Square::B8, Square::C5, Square::C7]),
       (Square::B8, &[Square::A6, Square::C6, Square::D7]),
-      (
-        Square::C8,
-        &[Square::A7, Square::B6, Square::D6, Square::E7],
-      ),
+      (Square::C8, &[Square::A7, Square::B6, Square::D6, Square::E7]),
       (Square::H8, &[Square::F7, Square::G6]),
       (
         Square::E5,
@@ -1007,10 +882,7 @@ mod tests {
     expected_kinds.insert(MoveKind::PromotionCaptureBishop);
     expected_kinds.insert(MoveKind::PromotionCaptureRook);
     expected_kinds.insert(MoveKind::PromotionCaptureQueen);
-    assert_eq!(
-      None,
-      expected_kinds.symmetric_difference(&move_kinds).next()
-    );
+    assert_eq!(None, expected_kinds.symmetric_difference(&move_kinds).next());
   }
 
   #[test]
@@ -1069,10 +941,7 @@ mod tests {
     expected_kinds.insert(MoveKind::PromotionCaptureBishop);
     expected_kinds.insert(MoveKind::PromotionCaptureRook);
     expected_kinds.insert(MoveKind::PromotionCaptureQueen);
-    assert_eq!(
-      None,
-      expected_kinds.symmetric_difference(&move_kinds).next()
-    );
+    assert_eq!(None, expected_kinds.symmetric_difference(&move_kinds).next());
   }
 
   #[test]
@@ -1090,11 +959,7 @@ mod tests {
     let moves = MoveGenerator::new().moves(&position);
     assert_moves(
       &[
-        Move {
-          kind: MoveKind::Move,
-          from: Square::E2,
-          to: Square::E3,
-        },
+        Move { kind: MoveKind::Move, from: Square::E2, to: Square::E3 },
         Move {
           kind: MoveKind::DoublePawnPush,
           from: Square::E2,
@@ -1130,11 +995,7 @@ mod tests {
     let moves = MoveGenerator::new().moves(&position);
     assert_moves(
       &[
-        Move {
-          kind: MoveKind::Move,
-          from: Square::F7,
-          to: Square::F6,
-        },
+        Move { kind: MoveKind::Move, from: Square::F7, to: Square::F6 },
         Move {
           kind: MoveKind::DoublePawnPush,
           from: Square::F7,
@@ -1217,10 +1078,8 @@ mod tests {
     assert_eq!(true, moves.contains(&castle_move));
 
     // King must not be in check
-    let position = builder
-      .clone()
-      .place(Square::F3, Piece::Knight, Color::Black)
-      .build();
+    let position =
+      builder.clone().place(Square::F3, Piece::Knight, Color::Black).build();
     let moves = MoveGenerator::new().moves(&position);
     assert_eq!(false, moves.contains(&castle_move));
 
@@ -1257,10 +1116,8 @@ mod tests {
     assert_eq!(true, moves.contains(&castle_move));
 
     // King must not be in check
-    let position = builder
-      .clone()
-      .place(Square::C3, Piece::Knight, Color::Black)
-      .build();
+    let position =
+      builder.clone().place(Square::C3, Piece::Knight, Color::Black).build();
     let moves = MoveGenerator::new().moves(&position);
     assert_eq!(false, moves.contains(&castle_move));
 
@@ -1341,19 +1198,11 @@ mod tests {
     let movegen = MoveGenerator::new();
     let pos = Position::startpos();
     assert_eq!(
-      Ok(Move {
-        kind: MoveKind::Move,
-        from: Square::B1,
-        to: Square::C3
-      }),
+      Ok(Move { kind: MoveKind::Move, from: Square::B1, to: Square::C3 }),
       movegen.parse_move(&pos, "b1c3"),
     );
     assert_eq!(
-      Ok(Move {
-        kind: MoveKind::Move,
-        from: Square::E2,
-        to: Square::E3,
-      }),
+      Ok(Move { kind: MoveKind::Move, from: Square::E2, to: Square::E3 }),
       movegen.parse_move(&pos, "e2e3"),
     );
   }
@@ -1365,11 +1214,7 @@ mod tests {
       .place(Square::D4, Piece::Knight, Color::Black)
       .build();
     assert_eq!(
-      Ok(Move {
-        kind: MoveKind::Capture,
-        from: Square::E3,
-        to: Square::D4,
-      }),
+      Ok(Move { kind: MoveKind::Capture, from: Square::E3, to: Square::D4 }),
       MoveGenerator::new().parse_move(&pos, "e3d4"),
     );
   }

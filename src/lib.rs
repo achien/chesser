@@ -1,6 +1,8 @@
 #![allow(clippy::complexity)]
 #![allow(clippy::redundant_clone)]
 
+pub mod attacks;
+pub mod bitboard;
 pub mod evaluation;
 pub mod move_generation;
 pub mod moves;

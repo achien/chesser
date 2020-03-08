@@ -8,7 +8,6 @@ pub enum Color {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Piece {
-  Nil,
   WhitePawn,
   BlackPawn,
   Knight,
@@ -16,7 +15,10 @@ pub enum Piece {
   Rook,
   Queen,
   King,
+  Nil,
 }
+
+pub const NUM_PIECES: usize = 7;
 
 impl Color {
   pub fn other(self) -> Self {
