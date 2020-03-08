@@ -22,16 +22,14 @@ fn main() {
     ("Position 2", Box::new(Perft::position2())),
     ("Position 3", Box::new(Perft::position3())),
     ("Position 4", Box::new(Perft::position4())),
-    (
-      "Position 4 (Mirrored)",
-      Box::new(Perft::position4_mirrored()),
-    ),
+    ("Position 4 (Mirrored)", Box::new(Perft::position4_mirrored())),
     ("Position 5", Box::new(Perft::position5())),
     ("Position 6", Box::new(Perft::position6())),
+    ("Position 7", Box::new(Perft::position7())),
   ];
 
   for (name, runner) in perfts {
-    println!("{}", name);
+    println!("{}: {}", name, runner.fen());
     for depth in 1..=runner.max_depth() {
       let total = runner.total_at_depth(depth);
       if total > TOTAL_CUTOFF {

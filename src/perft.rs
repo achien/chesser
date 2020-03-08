@@ -25,9 +25,7 @@ impl Default for Perft {
 
 impl Perft {
   pub fn new() -> Self {
-    Perft {
-      movegen: MoveGenerator::new(),
-    }
+    Perft { movegen: MoveGenerator::new() }
   }
 
   pub fn perft_all_stats(
@@ -89,8 +87,9 @@ impl Perft {
   }
 }
 
-pub trait PerftRunner {
+pub trait PerftRunner<'a> {
   fn run(&self, depth: usize);
+  fn fen(&self) -> &'a str;
   fn total_at_depth(&self, depth: usize) -> u64;
   fn max_depth(&self) -> usize;
 }
@@ -101,12 +100,16 @@ pub struct PerftWithFullResult<'a> {
   results: &'a [PerftResult],
 }
 
-impl PerftRunner for PerftWithFullResult<'_> {
+impl<'a> PerftRunner<'a> for PerftWithFullResult<'a> {
   fn run(&self, depth: usize) {
     let mut position = Position::from_fen(&self.fen).unwrap();
     let expected_result = &self.results[depth - 1];
     let actual_result = self.perft.perft_all_stats(&mut position, depth);
     assert_eq!(*expected_result, actual_result);
+  }
+
+  fn fen(&self) -> &'a str {
+    self.fen
   }
 
   fn total_at_depth(&self, depth: usize) -> u64 {
@@ -124,12 +127,16 @@ pub struct PerftWithTotalOnly<'a> {
   results: &'a [u64],
 }
 
-impl PerftRunner for PerftWithTotalOnly<'_> {
+impl<'a> PerftRunner<'a> for PerftWithTotalOnly<'a> {
   fn run(&self, depth: usize) {
     let mut position = Position::from_fen(&self.fen).unwrap();
     let expected_result = &self.results[depth - 1];
     let actual_result = self.perft.perft_total(&mut position, depth);
     assert_eq!(*expected_result, actual_result);
+  }
+
+  fn fen(&self) -> &'a str {
+    self.fen
   }
 
   fn total_at_depth(&self, depth: usize) -> u64 {
@@ -448,6 +455,15 @@ impl Perft {
       perft: Self::new(),
       fen: "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
       results: &[46, 2079, 89890, 3_894_594, 164_075_551, 6_923_051_137],
+    }
+  }
+
+  // http://www.talkchess.com/forum3/viewtopic.php?t=42463
+  pub fn position7() -> PerftWithTotalOnly<'static> {
+    PerftWithTotalOnly {
+      perft: Self::new(),
+      fen: "rnbqkb1r/pp1p1ppp/2p5/4P3/2B5/8/PPP1NnPP/RNBQK2R w KQkq - 0 6",
+      results: &[42, 1352, 53392],
     }
   }
 }

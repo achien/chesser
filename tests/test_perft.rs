@@ -2,7 +2,7 @@ use chessier::perft::*;
 
 const TOTAL_CUTOFF: u64 = 314_159;
 
-fn test_generic(runner: impl PerftRunner) {
+fn test_generic<'a>(runner: impl PerftRunner<'a>) {
   for depth in 1..=runner.max_depth() {
     if runner.total_at_depth(depth) > TOTAL_CUTOFF {
       continue;
@@ -44,4 +44,9 @@ fn test_position_5() {
 #[test]
 fn test_position_6() {
   test_generic(Perft::position6());
+}
+
+#[test]
+fn test_position_7() {
+  test_generic(Perft::position7());
 }
