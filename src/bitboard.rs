@@ -91,7 +91,7 @@ impl BitXorAssign<Square> for Bitboard {
 }
 
 impl Bitboard {
-  pub fn empty() -> Bitboard {
+  pub fn empty() -> Self {
     Bitboard(0)
   }
 
@@ -194,15 +194,14 @@ mod tests {
       assert_eq!(vec![s], squares, "{:?}", s);
       assert!(bb.is_empty());
 
-      // When iterating with a for loop, the bitboard is consumed (even if it
-      // is not defined as mut)
+      // When iterating with a for loop, the bitboard is not consumed
       let bb2 = Bitboard::from(s);
       let mut squares: Vec<Square> = vec![];
       for sq in bb2 {
         squares.push(sq);
       }
       assert_eq!(vec![s], squares, "{:?}", s);
-      assert!(bb.is_empty());
+      assert_eq!(Bitboard::from(s), bb2);
     }
   }
 
