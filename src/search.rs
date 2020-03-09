@@ -1,11 +1,8 @@
-use crate::evaluation::evaluate;
+use crate::evaluation::*;
 use crate::move_generation::MoveGenerator;
 use crate::moves::Move;
 use crate::position::Position;
 use rand::seq::SliceRandom;
-use std::i32;
-
-const CHECKMATED: i32 = -1_000_000;
 
 pub struct Search<'a> {
   movegen: &'a MoveGenerator,
@@ -18,7 +15,7 @@ impl<'a> Search<'a> {
 
   pub fn search(&self, pos: &mut Position, depth: i32) -> (i32, Option<Move>) {
     assert!(depth >= 0);
-    self.alpha_beta(pos, i32::MIN / 2, i32::MAX / 2, depth)
+    self.alpha_beta(pos, -MAX_SCORE, MAX_SCORE, depth, 0)
   }
 
   // https://www.chessprogramming.org/Alpha-Beta#Negamax_Framework
@@ -28,6 +25,7 @@ impl<'a> Search<'a> {
     alpha: i32,
     beta: i32,
     depth: i32,
+    depth_searched: i32,
   ) -> (i32, Option<Move>) {
     debug_assert!(depth >= 0);
     let color = pos.side_to_move();
@@ -44,7 +42,8 @@ impl<'a> Search<'a> {
       pos.make_move(m);
       if !self.movegen.in_check(&pos, color) {
         has_legal_move = true;
-        let (opp_score, _) = self.alpha_beta(pos, -beta, -alpha, depth - 1);
+        let (opp_score, _) =
+          self.alpha_beta(pos, -beta, -alpha, depth - 1, depth_searched + 1);
         let score = -opp_score;
         if score >= beta {
           pos.unmake_move();
@@ -61,7 +60,8 @@ impl<'a> Search<'a> {
     // to return that as the result
     if !has_legal_move {
       let score = if self.movegen.in_check(&pos, color) {
-        CHECKMATED
+        // Adjust by depth_search because it is better to get checkmated later
+        CHECKMATE_SCORE + depth_searched
       } else {
         // Stalemate is 0
         0
