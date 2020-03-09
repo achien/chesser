@@ -61,16 +61,8 @@ pub enum File {
   H,
 }
 
-pub const FILES: [File; 8] = [
-  File::A,
-  File::B,
-  File::C,
-  File::D,
-  File::E,
-  File::F,
-  File::G,
-  File::H,
-];
+pub const FILES: [File; 8] =
+  [File::A, File::B, File::C, File::D, File::E, File::F, File::G, File::H];
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SquareParseError {
@@ -114,6 +106,12 @@ impl Square {
       let file = unsafe { File::from_unchecked(file_num) };
       Some(Self::from(file, self.rank()))
     }
+  }
+
+  pub fn flip(self) -> Self {
+    let rank_num = i32::from(self.rank());
+    let flipped_rank = unsafe { Rank::from_unchecked(7 - rank_num) };
+    Self::from(self.file(), flipped_rank)
   }
 
   // We can average 2 squares to get the one between them
@@ -264,6 +262,15 @@ mod tests {
     assert_eq!(None, Square::B3.offset_file(-2));
     assert_eq!(None, Square::B3.offset_file(7));
     assert_eq!(Some(Square::B3), Square::B3.offset_file(0));
+  }
+
+  #[test]
+  fn test_flip() {
+    assert_eq!(Square::A4, Square::A5.flip());
+    assert_eq!(Square::C1, Square::C8.flip());
+    assert_eq!(Square::F6, Square::F3.flip());
+    assert_eq!(Square::H8, Square::H1.flip());
+    assert_eq!(Square::E2, Square::E7.flip());
   }
 
   #[test]

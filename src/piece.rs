@@ -20,6 +20,16 @@ pub enum Piece {
 
 pub const NUM_PIECES: usize = 7;
 
+pub const PIECES: [Piece; NUM_PIECES] = [
+  Piece::WhitePawn,
+  Piece::BlackPawn,
+  Piece::Knight,
+  Piece::Bishop,
+  Piece::Rook,
+  Piece::Queen,
+  Piece::King,
+];
+
 impl Color {
   pub fn other(self) -> Self {
     match self {

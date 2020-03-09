@@ -90,7 +90,7 @@ pub fn run() {
         None => eprintln!("no position provided before 'go'"),
         Some(pos) => {
           let search = Search::new(&movegen);
-          let (score, m) = search.search(pos, 5);
+          let (score, m) = search.search(pos, 6);
           match m {
             Some(m) => {
               println!("info score cp {}", score);
