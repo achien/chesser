@@ -2,7 +2,7 @@ use chessier::perft::*;
 use num::{Integer, NumCast};
 use std::time::Instant;
 
-const TOTAL_CUTOFF: u64 = 27_182_818;
+const TOTAL_CUTOFF: u64 = 2_718_281_828;
 
 fn format<T>(num: T) -> String
 where

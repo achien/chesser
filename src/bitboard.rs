@@ -1,12 +1,18 @@
 use crate::square::*;
 use std::ops::*;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Bitboard(i64);
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Bitboard(u64);
+
+impl From<Bitboard> for u64 {
+  fn from(bb: Bitboard) -> Self {
+    bb.0
+  }
+}
 
 impl From<Square> for Bitboard {
   fn from(s: Square) -> Self {
-    Bitboard(1i64 << i32::from(s))
+    Bitboard(1 << i32::from(s))
   }
 }
 

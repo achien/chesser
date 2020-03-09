@@ -347,7 +347,7 @@ impl Perft {
         },
         PerftResult {
           total: 178_633_661,
-          captures: 1_451_936,
+          captures: 14_519_036,
           en_passants: 294_874,
           castles: 0,
           promotions: 140_024,

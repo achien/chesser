@@ -28,7 +28,7 @@ pub enum MoveParseError {
 }
 
 pub struct MoveGenerator {
-  attacks: Attacks,
+  attacks: &'static Attacks,
 }
 
 impl Default for MoveGenerator {
@@ -39,7 +39,7 @@ impl Default for MoveGenerator {
 
 impl MoveGenerator {
   pub fn new() -> Self {
-    Self { attacks: Attacks::new() }
+    Self { attacks: Attacks::get() }
   }
 
   pub fn moves(&self, position: &Position) -> Vec<Move> {
