@@ -37,14 +37,14 @@ fn main() {
       }
       let start = Instant::now();
       runner.run(depth);
-      let elapsed_micros = start.elapsed().as_micros();
+      let elapsed_nanos = start.elapsed().as_nanos();
       println!(
         "  depth {} : {:3}.{:06}s for {} nodes ({} nodes/s)",
         depth,
-        elapsed_micros / 1_000_000,
-        elapsed_micros % 1_000_000,
+        elapsed_nanos / 1_000_000_000,
+        (elapsed_nanos % 1_000_000_000) / 1000,
         format(total),
-        format((total as u128) * 1_000_000 / elapsed_micros),
+        format((total as u128) * 1_000_000_000 / elapsed_nanos),
       );
     }
   }

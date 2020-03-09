@@ -8,6 +8,10 @@ edition = "2018"
 name="perft"
 path="src/bin/perft.rs"
 
+[[bin]]
+name="magic_find"
+path="src/bin/magic_find.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
