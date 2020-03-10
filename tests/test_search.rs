@@ -1,14 +1,16 @@
-use chessier::move_generation::MoveGenerator;
 use chessier::position::*;
 use chessier::search::*;
 
 fn test_positions(cases: &[(&str, &str, &str, i32)]) {
-  let movegen = MoveGenerator::new();
-  let search = Search::new(&movegen);
+  let mut search = Search::new(None);
   for &(name, fen, move_lan, depth) in cases {
     let mut pos = Position::from_fen(fen).unwrap();
-    let (_, best_move) = search.search(&mut pos, depth);
-    assert_eq!(move_lan, best_move.unwrap().long_algebraic(), "{}", name);
+    let res = search.search(&mut pos, depth);
+    if let SearchResult::Success(_, best_move) = res {
+      assert_eq!(move_lan, best_move.unwrap().long_algebraic(), "{}", name);
+    } else {
+      panic!("Bad SearchResult {:?} for {}", res, name);
+    }
   }
 }
 

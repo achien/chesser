@@ -1,6 +1,6 @@
 use chessier::move_generation::MoveGenerator;
 use chessier::position::*;
-use chessier::search::Search;
+use chessier::search::*;
 use crossbeam_channel::{self, select};
 use std::io::{self, Write};
 use std::str::SplitWhitespace;
@@ -13,6 +13,7 @@ pub fn run() {
   let (send_stdout, recv_stdout) = crossbeam_channel::unbounded();
   let (send_stderr, recv_stderr) = crossbeam_channel::unbounded();
   let (send_quit_output, recv_quit_output) = crossbeam_channel::bounded(1);
+  let (send_quit_search, recv_quit_search) = crossbeam_channel::bounded(1);
 
   let output_thread = thread::spawn(move || loop {
     select! {
@@ -29,6 +30,7 @@ pub fn run() {
       }
     }
   });
+  let mut search_thread: Option<thread::JoinHandle<()>> = None;
 
   let not_implemented = |line: &str| {
     send_stderr.send(format!("not implemented: {}", line.trim())).unwrap();
@@ -64,24 +66,42 @@ pub fn run() {
         None => send_stderr
           .send(String::from("no position provided before 'go'"))
           .unwrap(),
-        Some(pos) => {
-          let search = Search::new(&movegen);
-          let (score, m) = search.search(pos, 6);
-          match m {
-            Some(m) => {
-              send_stdout.send(format!("info score cp {}", score)).unwrap();
-              send_stdout
-                .send(format!("bestmove {}", m.long_algebraic()))
-                .unwrap();
-            }
-            None => send_stderr.send(String::from("no move found")).unwrap(),
+        Some(position) => {
+          if let Some(search_thread) = search_thread {
+            send_quit_search.send(()).unwrap();
+            search_thread.join().unwrap();
+            // Clear the signal, because the search thread may already have
+            // terminated and not needed the signal.
+            recv_quit_search.try_recv().unwrap_or(());
           }
+          let mut position = position.clone();
+          let send_stdout = send_stdout.clone();
+          let recv_quit_search = recv_quit_search.clone();
+          search_thread = Some(thread::spawn(move || {
+            let mut search = Search::new(Some(recv_quit_search));
+            match search.search(&mut position, 8) {
+              SearchResult::Abort => (),
+              SearchResult::Fail(_) => {
+                panic!("searched got pruned at top level: {:?}", position);
+              }
+              SearchResult::Success(score, m) => {
+                send_stdout.send(format!("info score cp {}", score)).unwrap();
+                send_stdout
+                  .send(format!("bestmove {}", m.unwrap().long_algebraic()))
+                  .unwrap();
+              }
+            };
+          }));
         }
       },
       Some("stop") => not_implemented(&line),
       Some("ponderhit") => not_implemented(&line),
       Some("quit") => {
         send_quit_output.send(()).unwrap();
+        if let Some(search_thread) = search_thread {
+          send_quit_search.send(()).unwrap();
+          search_thread.join().unwrap();
+        }
         output_thread.join().unwrap();
         return;
       }
