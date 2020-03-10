@@ -5,12 +5,12 @@ authors = ["Andrew Chien <aechien@gmail.com>"]
 edition = "2018"
 
 [[bin]]
-name="perft"
-path="src/bin/perft.rs"
+name = "perft"
+path = "src/bin/perft.rs"
 
 [[bin]]
-name="magic_find"
-path="src/bin/magic_find.rs"
+name = "magic_find"
+path = "src/bin/magic_find.rs"
 
 [profile.release]
 debug = true
@@ -18,8 +18,9 @@ debug = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lazy_static="1.4.0"
-num_enum="0.4"
-num="0.2"
-rand="0.7"
+crossbeam-channel = "0.4"
+lazy_static = "1.4.0"
+num_enum = "0.4"
+num = "0.2"
+rand = "0.7"
 static_assertions = "1.1.0"
