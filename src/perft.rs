@@ -1,10 +1,22 @@
 use crate::move_generation::MoveGenerator;
 use crate::moves::*;
-use crate::piece::*;
 use crate::position::Position;
-use crate::square::*;
-use crate::zobrist_hash::ZobristHash;
-use std::collections::HashMap;
+use lazy_static::lazy_static;
+
+lazy_static! {
+  pub static ref PERFTS: Vec<(&'static str, Box<dyn PerftRunner<'static>>)> = {
+    vec![
+      ("Position 1", Box::new(Perft::position1())),
+      ("Position 2", Box::new(Perft::position2())),
+      ("Position 3", Box::new(Perft::position3())),
+      ("Position 4", Box::new(Perft::position4())),
+      ("Position 4 (Mirrored)", Box::new(Perft::position4_mirrored())),
+      ("Position 5", Box::new(Perft::position5())),
+      ("Position 6", Box::new(Perft::position6())),
+      ("Position 7", Box::new(Perft::position7())),
+    ]
+  };
+}
 
 #[derive(Debug, Default, PartialEq)]
 pub struct PerftResult {
@@ -50,7 +62,7 @@ impl Perft {
     total
   }
 
-  fn perft_helper<F: FnMut(&Position, &Move)>(
+  pub fn perft_helper<F: FnMut(&Position, &Move)>(
     &self,
     pos: &mut Position,
     depth: usize,
@@ -91,58 +103,11 @@ impl Perft {
   }
 }
 
-#[derive(Clone, PartialEq)]
-struct ZobristHashCollisionData {
-  squares: Vec<(Piece, Color)>,
-  side_to_move: Color,
-  en_passant_target: Option<Square>,
-  can_castle_kside_w: bool,
-  can_castle_kside_b: bool,
-  can_castle_qside_w: bool,
-  can_castle_qside_b: bool,
-}
-
-pub trait PerftRunner<'a> {
+pub trait PerftRunner<'a>: Sync {
   fn run(&self, depth: usize);
   fn fen(&self) -> &'a str;
   fn total_at_depth(&self, depth: usize) -> u64;
   fn max_depth(&self) -> usize;
-
-  fn count_zobrist_hash_collisions(&self, depth: usize) -> (i32, usize) {
-    let perft = Perft::new();
-    let mut position = Position::from_fen(self.fen()).unwrap();
-    let mut collisions = 0;
-    let mut seen: HashMap<ZobristHash, ZobristHashCollisionData> =
-      HashMap::new();
-    perft.perft_helper(&mut position, depth, &mut |pos, _| {
-      let hash = pos.zobrist_hash();
-      let mut pos_squares = Vec::new();
-      for s in squares() {
-        pos_squares.push(pos.at(s));
-      }
-      let data = ZobristHashCollisionData {
-        squares: pos_squares,
-        side_to_move: pos.side_to_move(),
-        en_passant_target: pos.en_passant_target(),
-        can_castle_kside_w: pos.can_castle_kside(Color::White),
-        can_castle_kside_b: pos.can_castle_kside(Color::Black),
-        can_castle_qside_w: pos.can_castle_qside(Color::White),
-        can_castle_qside_b: pos.can_castle_qside(Color::Black),
-      };
-      let insert_res = seen.insert(hash, data.clone());
-      // Positions can have the same hash.  Hash is determined by:
-      // - Pieces
-      // - Side to move
-      // - Castling ability
-      // - En passant target
-      if let Some(other) = insert_res {
-        if data != other {
-          collisions += 1;
-        }
-      }
-    });
-    (collisions, seen.len())
-  }
 }
 
 pub struct PerftWithFullResult<'a> {

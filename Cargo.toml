@@ -12,6 +12,10 @@ path = "src/bin/perft.rs"
 name = "magic_find"
 path = "src/bin/magic_find.rs"
 
+[[bin]]
+name = "test_zobrist_hash"
+path = "src/bin/test_zobrist_hash.rs"
+
 [profile.release]
 debug = true
 

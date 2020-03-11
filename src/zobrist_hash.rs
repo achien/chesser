@@ -25,6 +25,12 @@ impl BitXorAssign for ZobristHash {
   }
 }
 
+impl ZobristHash {
+  pub fn get_bucket(&self, total: usize) -> usize {
+    (self.0 as usize) % total
+  }
+}
+
 pub struct ZobristHasher {
   square: [[[ZobristHash; 64]; NUM_PIECES]; 2],
   black_to_move: ZobristHash,
