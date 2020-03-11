@@ -3,6 +3,7 @@ use num::{Integer, NumCast};
 use std::time::Instant;
 
 const TOTAL_CUTOFF: u64 = 2_718_281_828;
+const ZOBRIST_HASH_COLLISION_CUTOFF: u64 = 27_182_818;
 
 fn format<T>(num: T) -> String
 where
@@ -28,7 +29,7 @@ fn main() {
     ("Position 7", Box::new(Perft::position7())),
   ];
 
-  for (name, runner) in perfts {
+  for (name, runner) in perfts.iter() {
     println!("{}: {}", name, runner.fen());
     for depth in 1..=runner.max_depth() {
       let total = runner.total_at_depth(depth);
@@ -37,14 +38,35 @@ fn main() {
       }
       let start = Instant::now();
       runner.run(depth);
-      let elapsed_nanos = start.elapsed().as_nanos();
+      let elapsed = start.elapsed().as_secs_f64();
       println!(
-        "  depth {} : {:3}.{:06}s for {} nodes ({} nodes/s)",
+        "  depth {} : {:10.6}s for {} nodes ({} nodes/s)",
         depth,
-        elapsed_nanos / 1_000_000_000,
-        (elapsed_nanos % 1_000_000_000) / 1000,
+        elapsed,
         format(total),
-        format((total as u128) * 1_000_000_000 / elapsed_nanos),
+        format(((total as f64) / elapsed) as u64),
+      );
+    }
+  }
+
+  for (name, runner) in perfts.iter() {
+    println!("Testing Zobrist hash collisions for {}", name);
+    for depth in 1..=runner.max_depth() {
+      let total = runner.total_at_depth(depth);
+      if total > ZOBRIST_HASH_COLLISION_CUTOFF {
+        continue;
+      }
+      let start = Instant::now();
+      let (collisions, unique) = runner.count_zobrist_hash_collisions(depth);
+      let elapsed = start.elapsed().as_secs_f64();
+      println!(
+        "  [{}] depth {} : {} collisions over {} nodes ({} unique) in {:.6}s",
+        if collisions == 0 { "PASSED" } else { "FAILED" },
+        depth,
+        collisions,
+        format(total),
+        format(unique),
+        elapsed,
       );
     }
   }

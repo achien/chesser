@@ -1,10 +1,8 @@
 use chessier::perft::*;
-use chessier::position::Position;
 
 const TOTAL_CUTOFF: u64 = 314_159;
 
 fn test_generic<'a>(runner: impl PerftRunner<'a>) {
-  let perft = Perft::new();
   for depth in 1..=runner.max_depth() {
     if runner.total_at_depth(depth) > TOTAL_CUTOFF {
       continue;
@@ -13,8 +11,7 @@ fn test_generic<'a>(runner: impl PerftRunner<'a>) {
     runner.run(depth);
 
     // Test hash collisions
-    let mut pos = Position::from_fen(runner.fen()).unwrap();
-    let collisions = perft.perft_hash_collision(&mut pos, depth);
+    let (collisions, _) = runner.count_zobrist_hash_collisions(depth);
     assert_eq!(0, collisions, "fen={}, depth={}", runner.fen(), depth);
   }
 }
