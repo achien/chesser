@@ -77,7 +77,7 @@ impl SearchThread {
     let handle = thread::spawn(move || {
       let mut position = position;
       let mut search = Search::new(Some(recv_quit));
-      match search.search(&mut position, 8) {
+      match search.search(&mut position, 10) {
         SearchResult::Abort => (),
         SearchResult::Fail(_) => {
           panic!("searched got pruned at top level: {:?}", position);

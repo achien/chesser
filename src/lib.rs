@@ -11,3 +11,4 @@ pub mod piece;
 pub mod position;
 pub mod search;
 pub mod square;
+mod zobrist_hash;

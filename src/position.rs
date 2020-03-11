@@ -2,6 +2,7 @@ use crate::bitboard::*;
 use crate::moves::*;
 use crate::piece::*;
 use crate::square::*;
+use crate::zobrist_hash::*;
 use std::fmt;
 
 const STARTPOS_FEN: &str =
@@ -51,6 +52,9 @@ pub struct Position {
   // Tracks moves that were made, and irreversible state like castling rights,
   // the halfmove clock, and en passant target
   state: Vec<State>,
+
+  zobrist_hasher: &'static ZobristHasher,
+  squares_zobrist: ZobristHash,
 }
 
 #[derive(Clone)]
@@ -148,6 +152,9 @@ impl PositionBuilder {
         en_passant_target: self.en_passant_target,
         halfmove_clock: self.halfmove_clock,
       }],
+
+      zobrist_hasher: &ZOBRIST_HASHER,
+      squares_zobrist: Default::default(),
     };
     for &(square, piece, color) in &self.pieces {
       position.place(square, piece, color);
@@ -317,6 +324,7 @@ impl Position {
     self.squares[square as usize] = (piece, color);
     self.color_bb[color as usize] |= square;
     self.piece_bb[color as usize][piece as usize] |= square;
+    self.squares_zobrist ^= self.zobrist_hasher.square(color, piece, square);
     self
   }
 
@@ -336,6 +344,7 @@ impl Position {
     self.squares[square as usize] = EMPTY_SQUARE;
     self.color_bb[color as usize] ^= square;
     self.piece_bb[color as usize][piece as usize] ^= square;
+    self.squares_zobrist ^= self.zobrist_hasher.square(color, piece, square);
     self
   }
 
@@ -353,6 +362,8 @@ impl Position {
     let diff = Bitboard::from(from) | Bitboard::from(to);
     self.color_bb[color as usize] ^= diff;
     self.piece_bb[color as usize][piece as usize] ^= diff;
+    self.squares_zobrist ^= self.zobrist_hasher.square(color, piece, from);
+    self.squares_zobrist ^= self.zobrist_hasher.square(color, piece, to);
     self
   }
 
@@ -565,6 +576,25 @@ impl Position {
       Color::Black => self.fullmove_count - 1,
     };
     self.side_to_move = move_color;
+  }
+
+  pub fn zobrist_hash(&self) -> ZobristHash {
+    let mut hash = self.squares_zobrist;
+    if self.side_to_move == Color::Black {
+      hash ^= self.zobrist_hasher.black_to_move();
+    }
+    for &c in &COLORS {
+      if self.can_castle_kside(c) {
+        hash ^= self.zobrist_hasher.castle_kside(c);
+      }
+      if self.can_castle_qside(c) {
+        hash ^= self.zobrist_hasher.castle_qside(c);
+      }
+    }
+    if let Some(ep_target) = self.en_passant_target() {
+      hash ^= self.zobrist_hasher.ep_file(ep_target.file());
+    }
+    hash
   }
 }
 
@@ -1048,5 +1078,36 @@ mod tests {
       to: Square::H1,
     });
     assert_castling(&pos, false, true, false, true);
+  }
+
+  #[test]
+  fn test_hash() {
+    // Undo move also undoes hash
+    let mut pos = Position::startpos();
+    let m = Move { kind: MoveKind::Move, from: Square::G1, to: Square::F3 };
+    let hash = pos.zobrist_hash();
+    pos.make_move(m);
+    assert_ne!(hash, pos.zobrist_hash());
+    pos.unmake_move();
+    assert_eq!(hash, pos.zobrist_hash());
+
+    // Move order does not matter
+    let m2 = Move {
+      kind: MoveKind::DoublePawnPush,
+      from: Square::H7,
+      to: Square::H5,
+    };
+    let m3 = Move { kind: MoveKind::Move, from: Square::B2, to: Square::B3 };
+    pos.make_move(m);
+    pos.make_move(m2);
+    pos.make_move(m3);
+    let hash123 = pos.zobrist_hash();
+    pos.unmake_move();
+    pos.unmake_move();
+    pos.unmake_move();
+    pos.make_move(m3);
+    pos.make_move(m2);
+    pos.make_move(m);
+    assert_eq!(hash123, pos.zobrist_hash());
   }
 }

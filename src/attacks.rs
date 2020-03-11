@@ -1,6 +1,6 @@
 use crate::bitboard::*;
 use crate::square::*;
-use lazy_static::*;
+use lazy_static::lazy_static;
 use rand::Rng;
 
 // This needs to be cached, because finding magics is relatively slow

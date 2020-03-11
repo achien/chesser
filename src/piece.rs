@@ -6,6 +6,8 @@ pub enum Color {
   Black,
 }
 
+pub const COLORS: [Color; 2] = [Color::White, Color::Black];
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Piece {
   WhitePawn,
