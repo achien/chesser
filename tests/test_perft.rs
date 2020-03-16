@@ -9,10 +9,6 @@ fn test_generic<'a>(runner: impl PerftRunner<'a>) {
     }
     // Test correctness
     runner.run(depth);
-
-    // Test hash collisions
-    let (collisions, _) = runner.count_zobrist_hash_collisions(depth);
-    assert_eq!(0, collisions, "fen={}, depth={}", runner.fen(), depth);
   }
 }
 

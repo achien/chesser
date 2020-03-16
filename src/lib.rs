@@ -12,4 +12,5 @@ pub mod piece;
 pub mod position;
 pub mod search;
 pub mod square;
+pub mod transposition_table;
 pub mod zobrist_hash;

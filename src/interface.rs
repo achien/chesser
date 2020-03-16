@@ -1,9 +1,11 @@
 use chessier::move_generation::MoveGenerator;
 use chessier::position::*;
 use chessier::search::*;
+use chessier::transposition_table::TranspositionTable;
 use crossbeam_channel::{self, select};
 use std::io::{self, Write};
 use std::str::SplitWhitespace;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 struct Interface {
@@ -67,26 +69,37 @@ impl Output {
   }
 
   pub fn eprintln(&self, msg: &str) {
-    self.send_stdout.send(msg.into()).unwrap();
+    self.send_stderr.send(msg.into()).unwrap();
   }
 }
 
 impl SearchThread {
-  pub fn spawn(position: Position, output: Output) -> Self {
+  pub fn spawn(
+    tt: Option<Arc<Mutex<TranspositionTable<TTData>>>>,
+    position: Position,
+    output: Output,
+  ) -> Self {
     let (send_quit, recv_quit) = crossbeam_channel::bounded(1);
     let handle = thread::spawn(move || {
       let mut position = position;
-      let mut search = Search::new(Some(recv_quit));
+      let mut search = Search::new(tt, Some(recv_quit));
       match search.search(&mut position, 10) {
         SearchResult::Abort => (),
-        SearchResult::Fail(_) => {
-          panic!("searched got pruned at top level: {:?}", position);
+        SearchResult::Move(score, m) => {
+          match score {
+            Score::WinIn(ply) => {
+              output.println(&format!("info score mate {}", ply / 2 + 1));
+            }
+            Score::LoseIn(ply) => {
+              output.println(&format!("info score mate -{}", ply / 2));
+            }
+            Score::Value(score) => {
+              output.println(&format!("info score cp {}", score));
+            }
+          }
+          output.println(&format!("bestmove {}", m.long_algebraic()));
         }
-        SearchResult::Success(score, m) => {
-          output.println(&format!("info score cp {}", score));
-          output.println(&format!("bestmove {}", m.unwrap().long_algebraic()));
-        }
-      };
+      }
     });
 
     Self { handle, send_quit }
@@ -105,6 +118,7 @@ impl Interface {
   fn loop_input(mut self) {
     let output = &self.output_thread.output;
     let mut position: Option<Position> = None;
+    let mut tt: Option<Arc<Mutex<TranspositionTable<TTData>>>> = None;
     loop {
       let mut line = String::new();
       let bytes_read = io::stdin().read_line(&mut line).unwrap();
@@ -128,7 +142,15 @@ impl Interface {
         Some("isready") => output.println("readyok"),
         Some("setoption") => self.not_implemented(&line),
         Some("register") => self.not_implemented(&line),
-        Some("ucinewgame") => (),
+        Some("ucinewgame") => {
+          tt = Some(Arc::new(Mutex::new(make_transposition_table(
+            1024 * 1024 * 1024,
+          ))));
+          output.eprintln(&format!(
+            "created transposition table, {} buckets",
+            tt.as_ref().unwrap().lock().unwrap().buckets()
+          ))
+        }
         Some("position") => match self.parse_position(&mut tokens) {
           Ok(pos) => position = Some(pos),
           Err(msg) => output.eprintln(&msg),
@@ -139,8 +161,11 @@ impl Interface {
             if let Some(search_thread) = self.search_thread {
               search_thread.quit();
             }
-            self.search_thread =
-              Some(SearchThread::spawn(position.clone(), output.clone()));
+            self.search_thread = Some(SearchThread::spawn(
+              tt.as_ref().map(|x| Arc::clone(x)),
+              position.clone(),
+              output.clone(),
+            ));
           }
         },
         Some("stop") => self.not_implemented(&line),

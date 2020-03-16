@@ -2,15 +2,22 @@ use chessier::position::*;
 use chessier::search::*;
 
 fn test_positions(cases: &[(&str, &str, &str, i32)]) {
-  let mut search = Search::new(None);
+  let mut search = Search::new(None, None);
   for &(name, fen, move_lan, depth) in cases {
     let mut pos = Position::from_fen(fen).unwrap();
     let res = search.search(&mut pos, depth);
-    if let SearchResult::Success(_, best_move) = res {
-      assert_eq!(move_lan, best_move.unwrap().long_algebraic(), "{}", name);
-    } else {
-      panic!("Bad SearchResult {:?} for {}", res, name);
-    }
+    match res {
+      SearchResult::Move(score, m) => {
+        assert_eq!(
+          move_lan,
+          m.long_algebraic(),
+          "{} (score={:?})",
+          name,
+          score
+        );
+      }
+      _ => panic!("Bad SearchResult {:?} for {}", res, name),
+    };
   }
 }
 
@@ -52,6 +59,15 @@ fn test_mate_in_one() {
     ("king and rook", "6k1/8/6K1/8/3R4/8/8/8 w - - 0 1", "d4d8", 2),
     ("queen", "7k/7p/4n1PQ/8/8/8/2K5/8 w - - 0 1", "h6h7", 2),
     ("smothered", "6nk/6pp/8/6N1/8/8/2K5/8 w - - 0 1", "g5f7", 2),
+  ];
+  test_positions(cases);
+}
+
+#[test]
+fn test_mate_in_two() {
+  let cases = &[
+    ("back rank", "6k1/5ppp/5n2/8/8/8/8/R3K3 w - - 0 1", "a1a8", 4),
+    ("smothered", "5rrk/6pp/7N/8/8/8/Q7/7K w - - 0 1", "a2g8", 4),
   ];
   test_positions(cases);
 }

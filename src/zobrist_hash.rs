@@ -25,9 +25,23 @@ impl BitXorAssign for ZobristHash {
   }
 }
 
+static mut TEST_CONSTRUCTOR_COUNTER: u64 = 0;
+unsafe fn next_test_constructor_counter() -> u64 {
+  let res = TEST_CONSTRUCTOR_COUNTER;
+  TEST_CONSTRUCTOR_COUNTER += 1;
+  res
+}
+
 impl ZobristHash {
-  pub fn get_bucket(&self, total: usize) -> usize {
-    (self.0 as usize) % total
+  pub fn get_bucket(self, total: usize) -> usize {
+    (self.0 % (total as u64)) as usize
+  }
+
+  pub fn new_for_test(desired_bucket: usize, total_buckets: usize) -> Self {
+    let counter = unsafe { next_test_constructor_counter() };
+    let res = Self(counter * (total_buckets as u64) + (desired_bucket as u64));
+    assert_eq!(desired_bucket, res.get_bucket(total_buckets));
+    res
   }
 }
 
