@@ -148,9 +148,7 @@ impl Search {
       pos,
       &Score::LoseIn(-1),
       &Score::WinIn(-1),
-      0,
       depth,
-      vec![],
     );
     if let Some(tt) = &self.tt {
       let tt = tt.lock().unwrap();
@@ -188,9 +186,7 @@ impl Search {
     pos: &mut Position,
     alpha: &Score,
     beta: &Score,
-    cur_depth: i32,
     depth_left: i32,
-    line: Vec<Move>,
   ) -> NodeResult {
     assert!(beta > alpha);
     self.nodes_visited += 1;
@@ -206,8 +202,7 @@ impl Search {
     if let Some(res) = tt_res {
       return res;
     }
-    let node_res =
-      self.alpha_beta_node(pos, alpha, beta, cur_depth, depth_left, line);
+    let node_res = self.alpha_beta_node(pos, alpha, beta, depth_left);
     if let Some(tt) = &mut self.tt {
       if let NodeResult::Abort = node_res {
         // do not store abort
@@ -229,9 +224,7 @@ impl Search {
     pos: &mut Position,
     alpha: &Score,
     beta: &Score,
-    cur_depth: i32,
     depth_left: i32,
-    line: Vec<Move>,
   ) -> NodeResult {
     debug_assert!(depth_left >= 1);
     let color = pos.side_to_move();
@@ -249,15 +242,11 @@ impl Search {
           self.nodes_visited += 1;
           NodeResult::Exact(Score::Value(evaluate(pos, color)), Some(m))
         } else {
-          let mut next_line = line.clone();
-          next_line.push(m);
           match self.alpha_beta_node(
             pos,
             &beta.negate_for_child(),
             &alpha.negate_for_child(),
-            cur_depth + 1,
             depth_left - 1,
-            next_line,
           ) {
             NodeResult::Abort => return NodeResult::Abort,
             child_result => NodeResult::Exact(
