@@ -1,11 +1,14 @@
+use chessier::moves::*;
 use chessier::position::*;
 use chessier::search::*;
+use chessier::square::*;
+use std::sync::{Arc, Mutex};
 
 fn test_positions(cases: &[(&str, &str, &str, i32)]) {
-  let mut search = Search::new(None, None);
   for &(name, fen, move_lan, depth) in cases {
-    let mut pos = Position::from_fen(fen).unwrap();
-    let res = search.search(&mut pos, depth);
+    let pos = Position::from_fen(fen).unwrap();
+    let mut search = Search::new(pos, None, None, None);
+    let res = search.search(depth);
     match res {
       SearchResult::Move(score, m) => {
         assert_eq!(
@@ -70,4 +73,24 @@ fn test_mate_in_two() {
     ("smothered", "5rrk/6pp/7N/8/8/8/Q7/7K w - - 0 1", "a2g8", 4),
   ];
   test_positions(cases);
+}
+
+#[test]
+fn test_pv() {
+  let tt = Arc::new(Mutex::new(make_transposition_table(1024 * 1024)));
+  let pos = Position::from_fen("r6k/6pp/8/8/1R6/8/8/1R3K2 w - - 0 1").unwrap();
+  let mut search = Search::new(pos, Some(tt), None, None);
+  let res = search.search(4);
+  assert_eq!(
+    SearchResult::Move(
+      Score::WinIn(3),
+      Move { kind: MoveKind::Move, from: Square::B4, to: Square::B8 }
+    ),
+    res
+  );
+
+  let (score, pv) = search.get_pv();
+  let pv: Vec<String> = pv.into_iter().map(|m| m.long_algebraic()).collect();
+  assert_eq!(Some(Score::WinIn(3)), score);
+  assert_eq!(vec!["b4b8", "a8b8", "b1b8"], pv);
 }

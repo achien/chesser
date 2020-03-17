@@ -25,6 +25,7 @@ struct OutputThread {
 struct Output {
   send_stdout: crossbeam_channel::Sender<String>,
   send_stderr: crossbeam_channel::Sender<String>,
+  pub send_searchinfo: crossbeam_channel::Sender<SearchInfo>,
 }
 
 struct SearchThread {
@@ -37,6 +38,7 @@ impl OutputThread {
     let (send_stdout, recv_stdout) = crossbeam_channel::unbounded();
     let (send_stderr, recv_stderr) = crossbeam_channel::unbounded();
     let (send_quit, recv_quit) = crossbeam_channel::bounded(1);
+    let (send_searchinfo, recv_searchinfo) = crossbeam_channel::unbounded();
 
     let handle = thread::spawn(move || loop {
       select! {
@@ -48,18 +50,70 @@ impl OutputThread {
           eprintln!("{}", s.unwrap());
           io::stderr().flush().unwrap();
         }
+        recv(recv_searchinfo) -> si => {
+          Self::print_searchinfo(si.unwrap());
+        }
         recv(recv_quit) -> _ => {
           return;
         }
       }
     });
 
-    Self { handle, send_quit, output: Output { send_stdout, send_stderr } }
+    Self {
+      handle,
+      send_quit,
+      output: Output { send_stdout, send_stderr, send_searchinfo },
+    }
   }
 
   fn quit(self) {
     self.send_quit.send(()).unwrap();
     self.handle.join().unwrap();
+  }
+
+  fn print_searchinfo(si: SearchInfo) {
+    let mut parts: Vec<String> = Vec::new();
+    parts.push("info".to_string());
+    if let Some(depth) = si.depth {
+      parts.push(format!("depth {}", depth));
+      if let Some(seldepth) = si.seldepth {
+        parts.push(format!("seldepth {}", seldepth));
+      }
+    }
+    if let Some(duration) = si.duration {
+      parts.push(format!("time {}", duration.as_millis()));
+    }
+    if let Some(nodes) = si.nodes {
+      parts.push(format!("nodes {}", nodes));
+    }
+    if let Some(nps) = si.nps {
+      parts.push(format!("nps {}", nps));
+    }
+    if let Some(hashfull) = si.hashfull {
+      parts.push(format!("hashfull {}", (1000. * hashfull).round() as i32));
+    }
+    if let Some(score) = si.score {
+      match score {
+        Score::WinIn(ply) => {
+          parts.push(format!("info score mate {}", ply / 2 + 1));
+        }
+        Score::LoseIn(ply) => {
+          parts.push(format!("info score mate -{}", ply / 2));
+        }
+        Score::Value(score) => {
+          parts.push(format!("info score cp {}", score));
+        }
+      }
+    }
+    if let Some(pv) = si.pv {
+      parts.push("multipv 1".to_string());
+      parts.push("pv".to_string());
+      for m in pv {
+        parts.push(m.long_algebraic());
+      }
+    }
+    println!("{}", parts.join(" "));
+    io::stdout().flush().unwrap();
   }
 }
 
@@ -81,9 +135,13 @@ impl SearchThread {
   ) -> Self {
     let (send_quit, recv_quit) = crossbeam_channel::bounded(1);
     let handle = thread::spawn(move || {
-      let mut position = position;
-      let mut search = Search::new(tt, Some(recv_quit));
-      match search.search(&mut position, 10) {
+      let mut search = Search::new(
+        position,
+        tt,
+        Some(recv_quit),
+        Some(output.send_searchinfo.clone()),
+      );
+      match search.search(7) {
         SearchResult::Abort => (),
         SearchResult::Move(score, m) => {
           match score {

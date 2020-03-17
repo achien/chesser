@@ -3,10 +3,12 @@ use crate::move_generation::MoveGenerator;
 use crate::moves::Move;
 use crate::position::Position;
 use crate::transposition_table::TranspositionTable;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use rand::seq::SliceRandom;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /*
  * We use an enum for the score because of winning.  Not all wins are equal
@@ -102,13 +104,27 @@ impl NodeResult {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SearchResult {
   Abort,
   Move(Score, Move),
 }
 
+const MAX_PV_DEPTH: i32 = 100;
+
 #[derive(Debug)]
+pub struct SearchInfo {
+  pub depth: Option<i32>,
+  pub seldepth: Option<i32>,
+  pub duration: Option<Duration>,
+  pub nodes: Option<u64>,
+  pub nps: Option<u64>,
+  pub pv: Option<Vec<Move>>,
+  pub score: Option<Score>,
+  pub hashfull: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TTData {
   search_depth: i32,
   result: NodeResult,
@@ -119,9 +135,16 @@ pub fn make_transposition_table(bytes: usize) -> TranspositionTable<TTData> {
 }
 
 pub struct Search {
+  position: Position,
+
   tt: Option<Arc<Mutex<TranspositionTable<TTData>>>>,
   movegen: MoveGenerator,
   recv_quit: Option<Receiver<()>>,
+  send_info: Option<Sender<SearchInfo>>,
+
+  last_info_sent: Instant,
+  found_new_pv: bool,
+  start_time: Instant,
   nodes_visited: u64,
   cache_hit: u64,
   cache_miss: u64,
@@ -129,25 +152,37 @@ pub struct Search {
 
 impl Search {
   pub fn new(
+    position: Position,
     tt: Option<Arc<Mutex<TranspositionTable<TTData>>>>,
     recv_quit: Option<Receiver<()>>,
+    send_info: Option<Sender<SearchInfo>>,
   ) -> Self {
     Search {
+      position,
+
       tt,
       movegen: MoveGenerator::new(),
       recv_quit,
+      send_info,
+
+      last_info_sent: Instant::now(),
+      // When beginning a search we've always found a new pv to send back
+      // because the UI knows nothing initially
+      found_new_pv: true,
+      start_time: Instant::now(),
       nodes_visited: 0,
       cache_hit: 0,
       cache_miss: 0,
     }
   }
 
-  pub fn search(&mut self, pos: &mut Position, depth: i32) -> SearchResult {
+  pub fn search(&mut self, depth: i32) -> SearchResult {
     assert!(depth >= 0);
     let res = self.alpha_beta_search(
-      pos,
+      &mut self.position.clone(),
       &Score::LoseIn(-1),
       &Score::WinIn(-1),
+      0,
       depth,
     );
     if let Some(tt) = &self.tt {
@@ -163,18 +198,19 @@ impl Search {
         100. * (tt.filled() as f64) / (tt.buckets() as f64)
       );
     }
+    self.send_info(depth);
     match &res {
       NodeResult::Abort => SearchResult::Abort,
       NodeResult::LowerBound(_) | NodeResult::UpperBound(_) => panic!(
         "Top level search result is not Exact: {:?} for position {:?}",
-        &res, pos
+        &res, &self.position,
       ),
       NodeResult::Exact(score, m) => SearchResult::Move(
         score.clone(),
         m.unwrap_or_else(|| {
           panic!(
             "Top level search result has no move: {:?} for position {:?}",
-            &res, pos
+            &res, &self.position,
           )
         }),
       ),
@@ -186,23 +222,29 @@ impl Search {
     pos: &mut Position,
     alpha: &Score,
     beta: &Score,
+    cur_depth: i32,
     depth_left: i32,
   ) -> NodeResult {
     assert!(beta > alpha);
     self.nodes_visited += 1;
-    if self.nodes_visited % 1024 == 0 {
+    if self.nodes_visited % 16384 == 0 {
       if let Some(recv_quit) = &self.recv_quit {
         if recv_quit.try_recv().is_ok() {
           return NodeResult::Abort;
         }
       }
+      self.maybe_send_info(cur_depth + depth_left);
     }
 
     let tt_res = self.load_tt_result(pos, alpha, beta, depth_left);
     if let Some(res) = tt_res {
       return res;
     }
-    let node_res = self.alpha_beta_node(pos, alpha, beta, depth_left);
+    let node_res =
+      self.alpha_beta_node(pos, alpha, beta, cur_depth, depth_left);
+    if let NodeResult::Exact(_, Some(_)) = node_res {
+      self.found_new_pv = true;
+    }
     if let Some(tt) = &mut self.tt {
       if let NodeResult::Abort = node_res {
         // do not store abort
@@ -224,6 +266,7 @@ impl Search {
     pos: &mut Position,
     alpha: &Score,
     beta: &Score,
+    cur_depth: i32,
     depth_left: i32,
   ) -> NodeResult {
     debug_assert!(depth_left >= 1);
@@ -242,10 +285,11 @@ impl Search {
           self.nodes_visited += 1;
           NodeResult::Exact(Score::Value(evaluate(pos, color)), Some(m))
         } else {
-          match self.alpha_beta_node(
+          match self.alpha_beta_search(
             pos,
             &beta.negate_for_child(),
             &alpha.negate_for_child(),
+            cur_depth + 1,
             depth_left - 1,
           ) {
             NodeResult::Abort => return NodeResult::Abort,
@@ -290,37 +334,114 @@ impl Search {
     beta: &Score,
     depth_left: i32,
   ) -> Option<NodeResult> {
-    let hash = pos.zobrist_hash();
-    if let Some(tt) = &self.tt {
-      if let Some(data) = tt.lock().unwrap().get(hash) {
-        if data.search_depth >= depth_left {
-          let return_val = match &data.result {
-            NodeResult::Abort => panic!("Should not store aborted result"),
-            NodeResult::LowerBound(score) => {
-              if score >= beta {
-                Some(data.result.clone())
-              } else {
-                None
-              }
+    if let Some(data) = self.load_tt_data(pos) {
+      if data.search_depth >= depth_left {
+        let return_val = match &data.result {
+          NodeResult::Abort => panic!("Should not store aborted result"),
+          NodeResult::LowerBound(score) => {
+            if score >= beta {
+              Some(data.result.clone())
+            } else {
+              None
             }
-            NodeResult::UpperBound(score) => {
-              if score <= alpha {
-                Some(data.result.clone())
-              } else {
-                None
-              }
-            }
-            NodeResult::Exact(_, _) => Some(data.result.clone()),
-          };
-          if return_val.is_some() {
-            self.cache_hit += 1;
-            return return_val;
           }
+          NodeResult::UpperBound(score) => {
+            if score <= alpha {
+              Some(data.result.clone())
+            } else {
+              None
+            }
+          }
+          NodeResult::Exact(_, _) => Some(data.result.clone()),
+        };
+        if return_val.is_some() {
+          self.cache_hit += 1;
+          return return_val;
         }
       }
-      self.cache_miss += 1;
     }
+    self.cache_miss += 1;
     None
+  }
+
+  fn load_tt_data(&self, pos: &Position) -> Option<TTData> {
+    let hash = pos.zobrist_hash();
+    if let Some(tt) = &self.tt {
+      tt.lock().unwrap().get(hash).cloned()
+    } else {
+      None
+    }
+  }
+
+  pub fn get_pv(&self) -> (Option<Score>, Vec<Move>) {
+    let mut pv = Vec::new();
+    let mut score = None;
+    let mut pos = self.position.clone();
+    // Keep track of positions to prevent loops
+    let mut seen = HashSet::new();
+    let mut depth: i32 = 0;
+    while let Some(data) = self.load_tt_data(&pos) {
+      depth += 1;
+      if depth > MAX_PV_DEPTH {
+        break;
+      }
+      if let NodeResult::Exact(s, Some(m)) = data.result {
+        if seen.contains(&pos.zobrist_hash()) {
+          break;
+        }
+        seen.insert(pos.zobrist_hash());
+        if score.is_none() {
+          score = Some(s.clone());
+        }
+        pv.push(m.clone());
+        pos.make_move(m);
+      } else {
+        break;
+      }
+    }
+    (score, pv)
+  }
+
+  fn maybe_send_info(&mut self, depth: i32) {
+    if !self.found_new_pv {
+      return;
+    }
+    let elapsed = self.last_info_sent.elapsed();
+    if elapsed.as_secs() < 1 {
+      return;
+    }
+    self.send_info(depth)
+  }
+
+  fn send_info(&mut self, depth: i32) {
+    if self.send_info.is_none() {
+      return;
+    }
+    let sender = self.send_info.as_ref().unwrap();
+    let info = self.gather_info(depth);
+    self.found_new_pv = false;
+    sender.send(info).unwrap();
+    self.last_info_sent = Instant::now();
+  }
+
+  fn gather_info(&self, depth: i32) -> SearchInfo {
+    let elasped = self.start_time.elapsed();
+    let nps = ((self.nodes_visited as f64) / elasped.as_secs_f64()) as u64;
+    let (score, pv) = self.get_pv();
+    let hashfull = self.tt.as_ref().map(|tt| {
+      let tt = tt.lock().unwrap();
+      (tt.filled() as f64) / (tt.buckets() as f64)
+    });
+    SearchInfo {
+      depth: Some(depth),
+      seldepth: None,
+      duration: Some(elasped),
+      nodes: Some(self.nodes_visited),
+      nps: Some(nps),
+      pv: if pv.is_empty() { None } else { Some(pv) },
+      score,
+      hashfull,
+    }
   }
 }
 
