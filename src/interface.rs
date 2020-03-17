@@ -1,7 +1,6 @@
 use chessier::move_generation::MoveGenerator;
 use chessier::position::*;
 use chessier::search::*;
-use chessier::transposition_table::TranspositionTable;
 use crossbeam_channel::{self, select};
 use std::io::{self, Write};
 use std::str::SplitWhitespace;
@@ -129,7 +128,7 @@ impl Output {
 
 impl SearchThread {
   pub fn spawn(
-    tt: Option<Arc<Mutex<TranspositionTable<TTData>>>>,
+    tt: Option<Arc<Mutex<TTType>>>,
     position: Position,
     output: Output,
   ) -> Self {
@@ -176,7 +175,7 @@ impl Interface {
   fn loop_input(mut self) {
     let output = &self.output_thread.output;
     let mut position: Option<Position> = None;
-    let mut tt: Option<Arc<Mutex<TranspositionTable<TTData>>>> = None;
+    let mut tt: Option<Arc<Mutex<TTType>>> = None;
     loop {
       let mut line = String::new();
       let bytes_read = io::stdin().read_line(&mut line).unwrap();
@@ -202,7 +201,7 @@ impl Interface {
         Some("register") => self.not_implemented(&line),
         Some("ucinewgame") => {
           tt = Some(Arc::new(Mutex::new(make_transposition_table(
-            1024 * 1024 * 1024,
+            256 * 1024 * 1024,
           ))));
           output.eprintln(&format!(
             "created transposition table, {} buckets",

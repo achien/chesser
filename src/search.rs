@@ -2,7 +2,8 @@ use crate::evaluation::*;
 use crate::move_generation::MoveGenerator;
 use crate::moves::Move;
 use crate::position::Position;
-use crate::transposition_table::TranspositionTable;
+use crate::transposition_table::{ReplacementStrategy, TranspositionTable};
+use crate::zobrist_hash::ZobristHash;
 use crossbeam_channel::{Receiver, Sender};
 use rand::seq::SliceRandom;
 use std::cmp::Ordering;
@@ -130,14 +131,30 @@ pub struct TTData {
   result: NodeResult,
 }
 
-pub fn make_transposition_table(bytes: usize) -> TranspositionTable<TTData> {
-  TranspositionTable::new_byte_size(bytes)
+pub struct ReplaceShallower {}
+
+impl ReplacementStrategy<TTData> for ReplaceShallower {
+  fn should_replace(
+    &self,
+    _old_key: ZobristHash,
+    _new_key: ZobristHash,
+    old_value: &TTData,
+    new_value: &TTData,
+  ) -> bool {
+    new_value.search_depth >= old_value.search_depth
+  }
+}
+
+pub type TTType = TranspositionTable<TTData, ReplaceShallower>;
+
+pub fn make_transposition_table(bytes: usize) -> TTType {
+  TranspositionTable::new_byte_size_with_strategy(bytes, ReplaceShallower {})
 }
 
 pub struct Search {
   position: Position,
 
-  tt: Option<Arc<Mutex<TranspositionTable<TTData>>>>,
+  tt: Option<Arc<Mutex<TTType>>>,
   movegen: MoveGenerator,
   recv_quit: Option<Receiver<()>>,
   send_info: Option<Sender<SearchInfo>>,
@@ -153,7 +170,7 @@ pub struct Search {
 impl Search {
   pub fn new(
     position: Position,
-    tt: Option<Arc<Mutex<TranspositionTable<TTData>>>>,
+    tt: Option<Arc<Mutex<TTType>>>,
     recv_quit: Option<Receiver<()>>,
     send_info: Option<Sender<SearchInfo>>,
   ) -> Self {
