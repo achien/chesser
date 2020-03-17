@@ -85,22 +85,25 @@ impl Score {
 enum NodeResult {
   Abort,
   // The node is too good and we would never reach it, i.e. score >= beta
-  LowerBound(Score),
+  LowerBound(Score, Move),
   // The node is not good enough and we would pick another one,
   // i.e. all scores <= alpha
   UpperBound(Score),
-  // We know its exact score and what move gets us there (no move if it is
-  // a leaf node)
-  Exact(Score, Option<Move>),
+  // We know its exact score and what move gets us
+  Exact(Score, Move),
+  // Special type of node for wins and draws.  These are exact scores but do
+  // not have a move associated with them.
+  GameOver(Score),
 }
 
 impl NodeResult {
   fn score(&self) -> &Score {
     match self {
       Self::Abort => panic!("Abort has no score"),
-      Self::LowerBound(score) => score,
+      Self::LowerBound(score, _) => score,
       Self::UpperBound(score) => score,
       Self::Exact(score, _) => score,
+      Self::GameOver(score) => score,
     }
   }
 }
@@ -145,10 +148,10 @@ impl ReplacementStrategy<TTData> for ReplaceShallower {
   }
 }
 
-pub type TTType = TranspositionTable<TTData, ReplaceShallower>;
+pub type TTType = TranspositionTable<TTData>;
 
 pub fn make_transposition_table(bytes: usize) -> TTType {
-  TranspositionTable::new_byte_size_with_strategy(bytes, ReplaceShallower {})
+  TranspositionTable::new_byte_size(bytes)
 }
 
 pub struct Search {
@@ -218,18 +221,12 @@ impl Search {
     self.send_info(depth);
     match &res {
       NodeResult::Abort => SearchResult::Abort,
-      NodeResult::LowerBound(_) | NodeResult::UpperBound(_) => panic!(
+      NodeResult::Exact(score, m) => {
+        SearchResult::Move(score.clone(), m.clone())
+      }
+      _ => panic!(
         "Top level search result is not Exact: {:?} for position {:?}",
         &res, &self.position,
-      ),
-      NodeResult::Exact(score, m) => SearchResult::Move(
-        score.clone(),
-        m.unwrap_or_else(|| {
-          panic!(
-            "Top level search result has no move: {:?} for position {:?}",
-            &res, &self.position,
-          )
-        }),
       ),
     }
   }
@@ -259,7 +256,7 @@ impl Search {
     }
     let node_res =
       self.alpha_beta_node(pos, alpha, beta, cur_depth, depth_left);
-    if let NodeResult::Exact(_, Some(_)) = node_res {
+    if let NodeResult::Exact(_, _) = node_res {
       self.found_new_pv = true;
     }
     if let Some(tt) = &mut self.tt {
@@ -300,7 +297,7 @@ impl Search {
         has_legal_move = true;
         let result = if depth_left == 1 {
           self.nodes_visited += 1;
-          NodeResult::Exact(Score::Value(evaluate(pos, color)), Some(m))
+          NodeResult::Exact(Score::Value(evaluate(pos, color)), m)
         } else {
           match self.alpha_beta_search(
             pos,
@@ -310,16 +307,15 @@ impl Search {
             depth_left - 1,
           ) {
             NodeResult::Abort => return NodeResult::Abort,
-            child_result => NodeResult::Exact(
-              child_result.score().negate_for_parent(),
-              Some(m),
-            ),
+            child_result => {
+              NodeResult::Exact(child_result.score().negate_for_parent(), m)
+            }
           }
         };
         let score = result.score();
         if score >= beta {
           pos.unmake_move();
-          return NodeResult::LowerBound(score.clone());
+          return NodeResult::LowerBound(score.clone(), m);
         }
         if score > &alpha {
           alpha = score.clone();
@@ -332,9 +328,9 @@ impl Search {
     // to return that as the result
     if !has_legal_move {
       if self.movegen.in_check(&pos, color) {
-        NodeResult::Exact(Score::LoseIn(0), None)
+        NodeResult::GameOver(Score::LoseIn(0))
       } else {
-        NodeResult::Exact(Score::Value(0), None)
+        NodeResult::GameOver(Score::Value(0))
       }
     } else {
       match best_result {
@@ -355,7 +351,7 @@ impl Search {
       if data.search_depth >= depth_left {
         let return_val = match &data.result {
           NodeResult::Abort => panic!("Should not store aborted result"),
-          NodeResult::LowerBound(score) => {
+          NodeResult::LowerBound(score, _) => {
             if score >= beta {
               Some(data.result.clone())
             } else {
@@ -369,7 +365,9 @@ impl Search {
               None
             }
           }
-          NodeResult::Exact(_, _) => Some(data.result.clone()),
+          NodeResult::GameOver(_) | NodeResult::Exact(_, _) => {
+            Some(data.result.clone())
+          }
         };
         if return_val.is_some() {
           self.cache_hit += 1;
@@ -402,7 +400,9 @@ impl Search {
       if depth > MAX_PV_DEPTH {
         break;
       }
-      if let NodeResult::Exact(s, Some(m)) = data.result {
+      if let NodeResult::Exact(s, m) | NodeResult::LowerBound(s, m) =
+        data.result
+      {
         if seen.contains(&pos.zobrist_hash()) {
           break;
         }
