@@ -38,6 +38,9 @@ pub enum Score {
   LoseIn(i32),
 }
 
+const MIN_SCORE: Score = Score::LoseIn(-1);
+const MAX_SCORE: Score = Score::WinIn(-1);
+
 impl PartialOrd for Score {
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
     match self {
@@ -165,9 +168,10 @@ pub struct Search {
   last_info_sent: Instant,
   found_new_pv: bool,
   start_time: Instant,
+  search_nodes_visited: u64,
   nodes_visited: u64,
-  cache_hit: u64,
-  cache_miss: u64,
+  cache_hit_result: u64,
+  cache_hit_move: u64,
 }
 
 impl Search {
@@ -190,29 +194,41 @@ impl Search {
       // because the UI knows nothing initially
       found_new_pv: true,
       start_time: Instant::now(),
+      search_nodes_visited: 0,
       nodes_visited: 0,
-      cache_hit: 0,
-      cache_miss: 0,
+      cache_hit_result: 0,
+      cache_hit_move: 0,
     }
   }
 
   pub fn search(&mut self, depth: i32) -> SearchResult {
-    assert!(depth >= 0);
+    assert!(depth >= 1);
+    for iterative_deepening_depth in 1..depth {
+      self.alpha_beta_search(
+        &mut self.position.clone(),
+        &MIN_SCORE,
+        &MAX_SCORE,
+        0,
+        iterative_deepening_depth,
+      );
+      self.send_info(iterative_deepening_depth);
+    }
     let res = self.alpha_beta_search(
       &mut self.position.clone(),
-      &Score::LoseIn(-1),
-      &Score::WinIn(-1),
+      &MIN_SCORE,
+      &MAX_SCORE,
       0,
       depth,
     );
     if let Some(tt) = &self.tt {
       let tt = tt.lock().unwrap();
       eprintln!(
-        "Searched = {} / Cache hit = {} ({:.2}%) / Cache miss = {} / Cache full = {}/{} ({:.2}%)",
+        "Searched = {} / Cache hit result (pruned tree) = {} ({:.2}%) / Cache hit move = {} ({:.2}% of remaining) / Cache full = {}/{} ({:.2}%)",
         self.nodes_visited,
-        self.cache_hit,
-        100. * (self.cache_hit as f64) / (self.cache_hit as f64 + self.cache_miss as f64),
-        self.cache_miss,
+        self.cache_hit_result,
+        100. * (self.cache_hit_result as f64) / (self.search_nodes_visited as f64),
+        self.cache_hit_move,
+        100. * (self.cache_hit_move as f64) / (self.search_nodes_visited as f64 - self.cache_hit_result as f64),
         tt.filled(),
         tt.buckets(),
         100. * (tt.filled() as f64) / (tt.buckets() as f64)
@@ -241,6 +257,7 @@ impl Search {
   ) -> NodeResult {
     assert!(beta > alpha);
     self.nodes_visited += 1;
+    self.search_nodes_visited += 1;
     if self.nodes_visited % 16384 == 0 {
       if let Some(recv_quit) = &self.recv_quit {
         if recv_quit.try_recv().is_ok() {
@@ -250,12 +267,17 @@ impl Search {
       self.maybe_send_info(cur_depth + depth_left);
     }
 
-    let tt_res = self.load_tt_result(pos, alpha, beta, depth_left);
+    let (tt_res, hash_move) = self.tt_load(pos, alpha, beta, depth_left);
     if let Some(res) = tt_res {
+      self.cache_hit_result += 1;
       return res;
     }
-    let node_res =
-      self.alpha_beta_node(pos, alpha, beta, cur_depth, depth_left);
+    if hash_move.is_some() {
+      self.cache_hit_move += 1;
+    }
+    let node_res = self.alpha_beta_search_moves(
+      pos, &hash_move, alpha, beta, cur_depth, depth_left,
+    );
     if let NodeResult::Exact(_, _) = node_res {
       self.found_new_pv = true;
     }
@@ -275,9 +297,10 @@ impl Search {
   }
 
   // https://www.chessprogramming.org/Alpha-Beta#Negamax_Framework
-  fn alpha_beta_node(
+  fn alpha_beta_search_moves(
     &mut self,
     pos: &mut Position,
+    hash_move: &Option<Move>,
     alpha: &Score,
     beta: &Score,
     cur_depth: i32,
@@ -291,6 +314,9 @@ impl Search {
     let mut rng = rand::thread_rng();
     let mut has_legal_move = false;
     moves.shuffle(&mut rng);
+    if let Some(hash_move) = hash_move {
+      moves.iter().position(|m| m == hash_move).map(|idx| moves.swap(0, idx));
+    }
     for m in moves {
       pos.make_move(m);
       if !self.movegen.in_check(&pos, color) {
@@ -340,46 +366,46 @@ impl Search {
     }
   }
 
-  fn load_tt_result(
+  fn tt_load(
     &mut self,
     pos: &Position,
     alpha: &Score,
     beta: &Score,
     depth_left: i32,
-  ) -> Option<NodeResult> {
-    if let Some(data) = self.load_tt_data(pos) {
+  ) -> (Option<NodeResult>, Option<Move>) {
+    let mut result = None;
+    let mut hash_move = None;
+    if let Some(data) = self.tt_load_data(pos) {
       if data.search_depth >= depth_left {
-        let return_val = match &data.result {
+        match &data.result {
           NodeResult::Abort => panic!("Should not store aborted result"),
           NodeResult::LowerBound(score, _) => {
             if score >= beta {
-              Some(data.result.clone())
-            } else {
-              None
+              result = Some(data.result.clone());
             }
           }
           NodeResult::UpperBound(score) => {
             if score <= alpha {
-              Some(data.result.clone())
-            } else {
-              None
+              result = Some(data.result.clone());
             }
           }
-          NodeResult::GameOver(_) | NodeResult::Exact(_, _) => {
-            Some(data.result.clone())
+          NodeResult::Exact(_, _) | NodeResult::GameOver(_) => {
+            result = Some(data.result.clone());
           }
         };
-        if return_val.is_some() {
-          self.cache_hit += 1;
-          return return_val;
+      }
+      match &data.result {
+        NodeResult::Abort => panic!("Should not store aborted result"),
+        NodeResult::LowerBound(_, m) | NodeResult::Exact(_, m) => {
+          hash_move = Some(m.clone());
         }
+        _ => (),
       }
     }
-    self.cache_miss += 1;
-    None
+    (result, hash_move)
   }
 
-  fn load_tt_data(&self, pos: &Position) -> Option<TTData> {
+  fn tt_load_data(&self, pos: &Position) -> Option<TTData> {
     let hash = pos.zobrist_hash();
     if let Some(tt) = &self.tt {
       tt.lock().unwrap().get(hash).cloned()
@@ -395,7 +421,7 @@ impl Search {
     // Keep track of positions to prevent loops
     let mut seen = HashSet::new();
     let mut depth: i32 = 0;
-    while let Some(data) = self.load_tt_data(&pos) {
+    while let Some(data) = self.tt_load_data(&pos) {
       depth += 1;
       if depth > MAX_PV_DEPTH {
         break;
