@@ -2,7 +2,7 @@ use crate::piece::*;
 use crate::position::*;
 use std::i32;
 
-// Score is milli-centipawns
+// Score is centipawns
 pub const MAX_SCORE: i32 = 1_000_000;
 pub const CHECKMATE_SCORE: i32 = -100_000;
 

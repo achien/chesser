@@ -275,9 +275,9 @@ impl Search {
     if hash_move.is_some() {
       self.cache_hit_move += 1;
     }
-    let node_res = self.alpha_beta_search_moves(
-      pos, &hash_move, alpha, beta, cur_depth, depth_left,
-    );
+    let moves = self.gen_ordered_moves(pos, &hash_move);
+    let node_res = self
+      .alpha_beta_search_moves(pos, moves, alpha, beta, cur_depth, depth_left);
     if let NodeResult::Exact(_, _) = node_res {
       self.found_new_pv = true;
     }
@@ -300,7 +300,7 @@ impl Search {
   fn alpha_beta_search_moves(
     &mut self,
     pos: &mut Position,
-    hash_move: &Option<Move>,
+    moves: Vec<Move>,
     alpha: &Score,
     beta: &Score,
     cur_depth: i32,
@@ -309,47 +309,43 @@ impl Search {
     debug_assert!(depth_left >= 1);
     let color = pos.side_to_move();
     let mut alpha = alpha.clone();
-    let mut best_result: Option<NodeResult> = None;
-    let mut moves = self.movegen.moves(pos);
-    let mut rng = rand::thread_rng();
+    let mut best_move: Option<Move> = None;
     let mut has_legal_move = false;
-    moves.shuffle(&mut rng);
-    if let Some(hash_move) = hash_move {
-      moves.iter().position(|m| m == hash_move).map(|idx| moves.swap(0, idx));
-    }
     for m in moves {
       pos.make_move(m);
-      if !self.movegen.in_check(&pos, color) {
-        has_legal_move = true;
-        let result = if depth_left == 1 {
-          self.nodes_visited += 1;
-          NodeResult::Exact(Score::Value(evaluate(pos, color)), m)
-        } else {
-          match self.alpha_beta_search(
-            pos,
-            &beta.negate_for_child(),
-            &alpha.negate_for_child(),
-            cur_depth + 1,
-            depth_left - 1,
-          ) {
-            NodeResult::Abort => return NodeResult::Abort,
-            child_result => {
-              NodeResult::Exact(child_result.score().negate_for_parent(), m)
-            }
-          }
-        };
-        let score = result.score();
-        if score >= beta {
-          pos.unmake_move();
-          return NodeResult::LowerBound(score.clone(), m);
-        }
-        if score > &alpha {
-          alpha = score.clone();
-          best_result = Some(result);
-        }
+      if self.movegen.in_check(&pos, color) {
+        pos.unmake_move();
+        continue;
       }
+      has_legal_move = true;
+
+      let score: Score;
+      if depth_left == 1 {
+        self.nodes_visited += 1;
+        score = Score::Value(evaluate(pos, color));
+      } else {
+        match self.alpha_beta_search(
+          pos,
+          &beta.negate_for_child(),
+          &alpha.negate_for_child(),
+          cur_depth + 1,
+          depth_left - 1,
+        ) {
+          NodeResult::Abort => return NodeResult::Abort,
+          child_result => score = child_result.score().negate_for_parent(),
+        }
+      };
       pos.unmake_move();
+
+      if &score >= beta {
+        return NodeResult::LowerBound(score, m);
+      }
+      if score > alpha {
+        alpha = score;
+        best_move = Some(m);
+      }
     }
+
     // If no legal move is found it's either checkmate or stalemate and we need
     // to return that as the result
     if !has_legal_move {
@@ -359,11 +355,25 @@ impl Search {
         NodeResult::GameOver(Score::Value(0))
       }
     } else {
-      match best_result {
+      match best_move {
         None => NodeResult::UpperBound(alpha),
-        Some(result) => result,
+        Some(m) => NodeResult::Exact(alpha, m),
       }
     }
+  }
+
+  fn gen_ordered_moves(
+    &self,
+    pos: &Position,
+    hash_move: &Option<Move>,
+  ) -> Vec<Move> {
+    let mut moves = self.movegen.moves(pos);
+    let mut rng = rand::thread_rng();
+    moves.shuffle(&mut rng);
+    if let Some(hash_move) = hash_move {
+      moves.iter().position(|m| m == hash_move).map(|idx| moves.swap(0, idx));
+    }
+    moves
   }
 
   fn tt_load(
