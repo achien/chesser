@@ -140,7 +140,7 @@ impl SearchThread {
         Some(recv_quit),
         Some(output.send_searchinfo.clone()),
       );
-      match search.search(7) {
+      match search.search(6) {
         SearchResult::Abort => (),
         SearchResult::Move(score, m) => {
           match score {

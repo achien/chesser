@@ -8,11 +8,12 @@ pub const CHECKMATE_SCORE: i32 = -100_000;
 
 // Sources:
 // https://www.chessprogramming.org/Simplified_Evaluation_Function
-const PAWN: i32 = 100;
-const KNIGHT: i32 = 320;
-const BISHOP: i32 = 330;
-const ROOK: i32 = 500;
-const QUEEN: i32 = 900;
+pub const PAWN: i32 = 100;
+pub const KNIGHT: i32 = 320;
+pub const BISHOP: i32 = 330;
+pub const ROOK: i32 = 500;
+pub const QUEEN: i32 = 900;
+pub const KING: i32 = 20000;
 
 type PieceTable = [i32; 64];
 
@@ -159,21 +160,24 @@ fn eval_color(pos: &Position, color: Color) -> i32 {
   eval_material(pos, color) + eval_piece_square(pos, color, phase)
 }
 
+pub fn get_piece_score(piece: Piece) -> i32 {
+  match piece {
+    Piece::WhitePawn => PAWN,
+    Piece::BlackPawn => PAWN,
+    Piece::Knight => KNIGHT,
+    Piece::Bishop => BISHOP,
+    Piece::Rook => ROOK,
+    Piece::Queen => QUEEN,
+    Piece::King => KING,
+    Piece::Nil => 0,
+  }
+}
+
 fn eval_material(pos: &Position, color: Color) -> i32 {
   let mut score: i32 = 0;
   for &piece in &PIECES {
-    let piece_score = match piece {
-      Piece::WhitePawn => PAWN,
-      Piece::BlackPawn => PAWN,
-      Piece::Knight => KNIGHT,
-      Piece::Bishop => BISHOP,
-      Piece::Rook => ROOK,
-      Piece::Queen => QUEEN,
-      Piece::King => continue,
-      Piece::Nil => continue,
-    };
     let count = pos.occupied_by_piece(color, piece).count();
-    score += (count as i32) * piece_score;
+    score += (count as i32) * get_piece_score(piece);
   }
   score
 }

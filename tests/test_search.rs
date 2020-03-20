@@ -94,3 +94,32 @@ fn test_pv() {
   assert_eq!(Some(Score::WinIn(3)), score);
   assert_eq!(vec!["b4b8", "a8b8", "b1b8"], pv);
 }
+
+#[test]
+fn test_quiesce() {
+  // Pxr is safe because qxQ is an exchange not just a capture
+  let pos =
+    Position::from_fen("k7/pp6/1br4q/3P4/6B1/7Q/PP6/KR6 w - - 0 1").unwrap();
+  let mut search = Search::new(pos, None, None, None);
+  let res = search.search(2);
+  match res {
+    SearchResult::Move(_, res_move) => assert_eq!(
+      Move { kind: MoveKind::Capture, from: Square::D5, to: Square::C6 },
+      res_move
+    ),
+    _ => panic!("Expected move as search result"),
+  }
+
+  // If the bishop is not defending the queen pxR loses the queen
+  let pos =
+    Position::from_fen("k7/pp6/1br4q/3P4/8/5B1Q/PP6/KR6 w - - 0 1").unwrap();
+  let mut search = Search::new(pos, None, None, None);
+  let res = search.search(2);
+  match res {
+    SearchResult::Move(_, res_move) => assert_ne!(
+      Move { kind: MoveKind::Capture, from: Square::D5, to: Square::C6 },
+      res_move
+    ),
+    _ => panic!("Expected move as search result"),
+  }
+}
