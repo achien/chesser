@@ -163,8 +163,43 @@ pub fn make_transposition_table(bytes: usize) -> TTType {
   TranspositionTable::new_byte_size(bytes)
 }
 
+pub struct SearchParams {
+  pub searchmoves: Vec<Move>,
+  pub ponder: bool,
+  pub wtime: Option<Duration>,
+  pub btime: Option<Duration>,
+  pub winc: Option<Duration>,
+  pub binc: Option<Duration>,
+  pub movestogo: Option<i32>,
+  pub depth: Option<i32>,
+  pub nodes: Option<u64>,
+  pub mate: Option<i32>,
+  pub movetime: Option<Duration>,
+  pub infinite: bool,
+}
+
+impl Default for SearchParams {
+  fn default() -> Self {
+    SearchParams {
+      searchmoves: Vec::new(),
+      ponder: false,
+      wtime: None,
+      btime: None,
+      winc: None,
+      binc: None,
+      movestogo: None,
+      depth: None,
+      nodes: None,
+      mate: None,
+      movetime: None,
+      infinite: false,
+    }
+  }
+}
+
 pub struct Search {
   position: Position,
+  params: SearchParams,
 
   tt: Option<Arc<Mutex<TTType>>>,
   movegen: MoveGenerator,
@@ -184,12 +219,14 @@ pub struct Search {
 impl Search {
   pub fn new(
     position: Position,
+    params: SearchParams,
     tt: Option<Arc<Mutex<TTType>>>,
     recv_quit: Option<Receiver<()>>,
     send_info: Option<Sender<SearchInfo>>,
   ) -> Self {
     Search {
       position,
+      params,
 
       tt,
       movegen: MoveGenerator::new(),
@@ -209,11 +246,26 @@ impl Search {
     }
   }
 
-  pub fn search(&mut self, depth: i32) -> SearchResult {
+  pub fn search(&mut self) -> SearchResult {
+    // For now, just search with a depth
+    let depth: i32;
+    if self.params.infinite {
+      depth = 1000;
+    } else if let Some(specific_depth) = self.params.depth {
+      depth = specific_depth;
+    } else if let Some(mate_in_depth) = self.params.mate {
+      // For mate, we need to search 1 depth deeper to verify there are no
+      // legal moves remaining
+      depth = mate_in_depth + 1;
+    } else {
+      depth = 6;
+    }
     assert!(depth >= 1);
-    for iterative_deepening_depth in 1..depth {
+
+    let mut res: NodeResult = NodeResult::Abort;
+    for iterative_deepening_depth in 1..=depth {
       self.seldepth = iterative_deepening_depth;
-      self.alpha_beta_search(
+      res = self.alpha_beta_search(
         &mut self.position.clone(),
         &MIN_SCORE,
         &MAX_SCORE,
@@ -221,15 +273,10 @@ impl Search {
         iterative_deepening_depth,
       );
       self.send_info(iterative_deepening_depth);
+      if let NodeResult::Abort = res {
+        break;
+      }
     }
-    self.seldepth = depth;
-    let res = self.alpha_beta_search(
-      &mut self.position.clone(),
-      &MIN_SCORE,
-      &MAX_SCORE,
-      0,
-      depth,
-    );
 
     if let Some(tt) = &self.tt {
       let tt = tt.lock().unwrap();
@@ -245,9 +292,17 @@ impl Search {
         100. * (tt.filled() as f64) / (tt.buckets() as f64)
       );
     }
-    self.send_info(depth);
+
     match &res {
-      NodeResult::Abort => SearchResult::Abort,
+      NodeResult::Abort => {
+        // Check transposition table for a move if possible
+        let (score, m) = self.get_pv();
+        if score.is_some() && !m.is_empty() {
+          SearchResult::Move(score.unwrap().clone(), m[0].clone())
+        } else {
+          SearchResult::Abort
+        }
+      }
       NodeResult::Exact(score, m) => {
         SearchResult::Move(score.clone(), m.clone())
       }
@@ -270,10 +325,8 @@ impl Search {
     self.nodes_visited += 1;
     self.search_nodes_visited += 1;
     if self.nodes_visited % 16384 == 0 {
-      if let Some(recv_quit) = &self.recv_quit {
-        if recv_quit.try_recv().is_ok() {
-          return NodeResult::Abort;
-        }
+      if self.should_abort() {
+        return NodeResult::Abort;
       }
       self.maybe_send_info(cur_depth + depth_left);
     }
@@ -551,6 +604,25 @@ impl Search {
       }
     }
     (score, pv)
+  }
+
+  fn should_abort(&self) -> bool {
+    if let Some(recv_quit) = &self.recv_quit {
+      if recv_quit.try_recv().is_ok() {
+        return true;
+      }
+    }
+    if let Some(max_nodes) = self.params.nodes {
+      if self.nodes_visited >= max_nodes {
+        return true;
+      }
+    }
+    if let Some(movetime) = self.params.movetime {
+      if self.start_time.elapsed() >= movetime {
+        return true;
+      }
+    }
+    false
   }
 
   fn maybe_send_info(&mut self, depth: i32) {

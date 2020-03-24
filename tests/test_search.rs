@@ -7,8 +7,14 @@ use std::sync::{Arc, Mutex};
 fn test_positions(cases: &[(&str, &str, &str, i32)]) {
   for &(name, fen, move_lan, depth) in cases {
     let pos = Position::from_fen(fen).unwrap();
-    let mut search = Search::new(pos, None, None, None);
-    let res = search.search(depth);
+    let mut search = Search::new(
+      pos,
+      SearchParams { depth: Some(depth), ..Default::default() },
+      None,
+      None,
+      None,
+    );
+    let res = search.search();
     match res {
       SearchResult::Move(score, m) => {
         assert_eq!(
@@ -79,8 +85,14 @@ fn test_mate_in_two() {
 fn test_pv() {
   let tt = Arc::new(Mutex::new(make_transposition_table(1024 * 1024)));
   let pos = Position::from_fen("r6k/6pp/8/8/1R6/8/8/1R3K2 w - - 0 1").unwrap();
-  let mut search = Search::new(pos, Some(tt), None, None);
-  let res = search.search(4);
+  let mut search = Search::new(
+    pos,
+    SearchParams { depth: Some(4), ..Default::default() },
+    Some(tt),
+    None,
+    None,
+  );
+  let res = search.search();
   assert_eq!(
     SearchResult::Move(
       Score::WinIn(3),
@@ -100,8 +112,14 @@ fn test_quiesce() {
   // Pxr is safe because qxQ is an exchange not just a capture
   let pos =
     Position::from_fen("k7/pp6/1br4q/3P4/6B1/7Q/PP6/KR6 w - - 0 1").unwrap();
-  let mut search = Search::new(pos, None, None, None);
-  let res = search.search(2);
+  let mut search = Search::new(
+    pos,
+    SearchParams { depth: Some(2), ..Default::default() },
+    None,
+    None,
+    None,
+  );
+  let res = search.search();
   match res {
     SearchResult::Move(_, res_move) => assert_eq!(
       Move { kind: MoveKind::Capture, from: Square::D5, to: Square::C6 },
@@ -113,8 +131,14 @@ fn test_quiesce() {
   // If the bishop is not defending the queen pxR loses the queen
   let pos =
     Position::from_fen("k7/pp6/1br4q/3P4/8/5B1Q/PP6/KR6 w - - 0 1").unwrap();
-  let mut search = Search::new(pos, None, None, None);
-  let res = search.search(2);
+  let mut search = Search::new(
+    pos,
+    SearchParams { depth: Some(2), ..Default::default() },
+    None,
+    None,
+    None,
+  );
+  let res = search.search();
   match res {
     SearchResult::Move(_, res_move) => assert_ne!(
       Move { kind: MoveKind::Capture, from: Square::D5, to: Square::C6 },

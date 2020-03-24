@@ -1,11 +1,13 @@
+use chessier::attacks::Attacks;
 use chessier::move_generation::MoveGenerator;
 use chessier::position::*;
 use chessier::search::*;
 use crossbeam_channel::{self, select};
 use std::io::{self, Write};
-use std::str::SplitWhitespace;
+use std::str::{FromStr, SplitWhitespace};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 struct Interface {
   movegen: MoveGenerator,
@@ -130,17 +132,19 @@ impl SearchThread {
   pub fn spawn(
     tt: Option<Arc<Mutex<TTType>>>,
     position: Position,
+    params: SearchParams,
     output: Output,
   ) -> Self {
     let (send_quit, recv_quit) = crossbeam_channel::bounded(1);
     let handle = thread::spawn(move || {
       let mut search = Search::new(
         position,
+        params,
         tt,
         Some(recv_quit),
         Some(output.send_searchinfo.clone()),
       );
-      match search.search(6) {
+      match search.search() {
         SearchResult::Abort => (),
         SearchResult::Move(score, m) => {
           match score {
@@ -196,7 +200,10 @@ impl Interface {
           output.println("uciok");
         }
         Some("debug") => self.not_implemented(&line),
-        Some("isready") => output.println("readyok"),
+        Some("isready") => {
+          Attacks::get();
+          output.println("readyok");
+        }
         Some("setoption") => self.not_implemented(&line),
         Some("register") => self.not_implemented(&line),
         Some("ucinewgame") => {
@@ -217,15 +224,27 @@ impl Interface {
           Some(position) => {
             if let Some(search_thread) = self.search_thread {
               search_thread.quit();
+              self.search_thread = None;
             }
-            self.search_thread = Some(SearchThread::spawn(
-              tt.as_ref().map(|x| Arc::clone(x)),
-              position.clone(),
-              output.clone(),
-            ));
+            match self.parse_go(&mut tokens, &position) {
+              Err(msg) => output.eprintln(&msg),
+              Ok(params) => {
+                self.search_thread = Some(SearchThread::spawn(
+                  tt.as_ref().map(|x| Arc::clone(x)),
+                  position.clone(),
+                  params,
+                  output.clone(),
+                ));
+              }
+            }
           }
         },
-        Some("stop") => self.not_implemented(&line),
+        Some("stop") => {
+          if let Some(search_thread) = self.search_thread {
+            search_thread.quit();
+            self.search_thread = None;
+          }
+        }
         Some("ponderhit") => self.not_implemented(&line),
         Some("quit") => {
           self.quit();
@@ -306,6 +325,67 @@ impl Interface {
     }
     Ok(position)
   }
+
+  fn parse_go(
+    &self,
+    tokens: &mut SplitWhitespace,
+    pos: &Position,
+  ) -> Result<SearchParams, String> {
+    let mut params: SearchParams = Default::default();
+    // This variable exists because we want to "peek" in searchmoves; if we
+    // hit a non-move we will re-parse this token instead of advancing to
+    // the next one.
+    let mut token = tokens.next();
+    loop {
+      match token {
+        None => break,
+        Some("searchmoves") => {
+          loop {
+            match tokens.next() {
+              None => break,
+              Some(move_str) => match self.movegen.parse_move(pos, move_str) {
+                Ok(m) => params.searchmoves.push(m),
+                Err(_) => break,
+              },
+            }
+          }
+          // This token is not a move (or is None); do not advance because
+          // we need to re-parse the token
+          continue;
+        }
+        Some("ponder") => params.ponder = true,
+        Some("wtime") => params.wtime = Some(parse_msecs(tokens)?),
+        Some("btime") => params.btime = Some(parse_msecs(tokens)?),
+        Some("winc") => params.winc = Some(parse_msecs(tokens)?),
+        Some("binc") => params.binc = Some(parse_msecs(tokens)?),
+        Some("movestogo") => params.movestogo = Some(parse_token(tokens)?),
+        Some("depth") => params.depth = Some(parse_token(tokens)?),
+        Some("nodes") => params.nodes = Some(parse_token(tokens)?),
+        Some("mate") => params.mate = Some(parse_token(tokens)?),
+        Some("movetime") => params.movetime = Some(parse_msecs(tokens)?),
+        Some("infinite") => params.infinite = true,
+        Some(other) => return Err(format!("go: invalid token {}", other)),
+      }
+      token = tokens.next();
+    }
+    Ok(params)
+  }
+}
+
+fn parse_token<T: FromStr>(tokens: &mut SplitWhitespace) -> Result<T, String> {
+  let num = match tokens.next() {
+    None => return Err(format!("expected token but got nothing")),
+    Some(x) => x,
+  };
+  match num.parse::<T>() {
+    Err(_) => Err(format!("{} is not a number", num)),
+    Ok(n) => Ok(n),
+  }
+}
+
+fn parse_msecs(tokens: &mut SplitWhitespace) -> Result<Duration, String> {
+  let msecs = parse_token(tokens)?;
+  Ok(Duration::from_millis(msecs))
 }
 
 pub fn run() {
