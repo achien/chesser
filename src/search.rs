@@ -273,8 +273,21 @@ impl Search {
         iterative_deepening_depth,
       );
       self.send_info(iterative_deepening_depth);
-      if let NodeResult::Abort = res {
-        break;
+      match &res {
+        NodeResult::Abort => break,
+        NodeResult::Exact(score, _move) => {
+          // Stop searching if we've found mate.  Because of iterative
+          // deepening we can't do any better.  If we are being mated we
+          // keep searching to find the move that delays mate for as long
+          // as possible.
+          if let Score::WinIn(_) = score {
+            break;
+          }
+        }
+        _ => panic!(
+          "Top level search result is not Exact: {:?} for position {:?}",
+          &res, &self.position,
+        ),
       }
     }
 
