@@ -414,6 +414,22 @@ impl MoveGenerator {
     self.is_attacked_by(pos, king_sq, color.other())
   }
 
+  pub fn is_checkmate(&self, pos: &mut Position) -> bool {
+    let color = pos.side_to_move();
+    if !self.in_check(pos, color) {
+      return false;
+    }
+    for m in self.moves(pos) {
+      pos.make_move(&m);
+      if !self.in_check(pos, color) {
+        pos.unmake_move();
+        return false;
+      }
+      pos.unmake_move();
+    }
+    true
+  }
+
   /// Parses a move and makes sure it is pseudo-legal.  Right now it only
   /// parses moves in long algebraic format.
   pub fn parse_move(
@@ -1400,5 +1416,50 @@ mod tests {
       }),
       movegen.parse_move(&pos, "g5h6"),
     );
+  }
+
+  #[test]
+  fn test_is_checkmate() {
+    let movegen = MoveGenerator::new();
+    let mut pos = PositionBuilder::new()
+      .side_to_move(Color::Black)
+      .place(Square::F7, Piece::King, Color::White)
+      .place(Square::G6, Piece::King, Color::White)
+      .place(Square::H8, Piece::King, Color::Black)
+      .build();
+    assert_eq!(
+      false,
+      movegen.is_checkmate(&mut pos),
+      "stalemate, black to move"
+    );
+
+    // True if checkmate by white
+    let mut pos = PositionBuilder::new()
+      .side_to_move(Color::Black)
+      .place(Square::F7, Piece::King, Color::White)
+      .place(Square::G7, Piece::King, Color::White)
+      .place(Square::H8, Piece::King, Color::Black)
+      .build();
+    assert_eq!(true, movegen.is_checkmate(&mut pos), "checkmate by white");
+
+    let mut pos = PositionBuilder::new()
+      .side_to_move(Color::White)
+      .place(Square::F7, Piece::King, Color::Black)
+      .place(Square::G6, Piece::King, Color::Black)
+      .place(Square::H8, Piece::King, Color::White)
+      .build();
+    assert_eq!(
+      false,
+      movegen.is_checkmate(&mut pos),
+      "stalemate, white to move"
+    );
+
+    let mut pos = PositionBuilder::new()
+      .side_to_move(Color::White)
+      .place(Square::F7, Piece::King, Color::Black)
+      .place(Square::G7, Piece::King, Color::Black)
+      .place(Square::H8, Piece::King, Color::White)
+      .build();
+    assert_eq!(true, movegen.is_checkmate(&mut pos), "checkmate by black");
   }
 }

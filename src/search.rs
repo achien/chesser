@@ -421,8 +421,11 @@ impl Search {
       }
       has_legal_move = true;
 
-      // Calculate the score
-      let score = if pos.is_repetition() {
+      // Calculate the score.  If we are in draw (due to repetition or fifty-
+      // move rule) verify we are not actually checkmated.  If we don't check
+      // for checkmate we might think a move is good because it leads to a draw,
+      // even though it actually leads to mate.
+      let score = if pos.is_draw() && !self.movegen.is_checkmate(pos) {
         DRAW_SCORE
       } else {
         match self.alpha_beta_search(
@@ -629,7 +632,7 @@ impl Search {
     // re-evaluate the position
     if let Some(hash_move) = data.hash_move() {
       pos.make_move(hash_move);
-      if pos.is_repetition() {
+      if pos.is_draw() {
         pos.unmake_move();
         return false;
       }

@@ -591,7 +591,11 @@ impl Position {
     self.side_to_move = move_color;
   }
 
-  pub fn is_repetition(&self) -> bool {
+  pub fn is_draw(&self) -> bool {
+    self.halfmove_clock() >= 100 || self.is_repetition()
+  }
+
+  fn is_repetition(&self) -> bool {
     // Any move that resets the halfmove clock makes repetitions impossible
     // Repetitions can happen 4, 6, 8, ... plies ago
     let hash = self.zobrist_hash();

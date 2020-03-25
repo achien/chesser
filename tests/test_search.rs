@@ -84,7 +84,7 @@ fn test_mate_in_two() {
 #[test]
 fn test_pv() {
   let pos = Position::from_fen("r6k/6pp/8/8/1R6/8/8/1R3K2 w - - 0 1").unwrap();
-  let tt = Arc::new(Mutex::new(make_transposition_table(64 * 1024)));
+  let tt = Arc::new(Mutex::new(make_transposition_table(1024 * 1024)));
   let mut search = Search::new(
     pos,
     SearchParams { depth: Some(4), ..Default::default() },
@@ -153,7 +153,7 @@ fn test_repetition() {
   // In this position we force a draw
   let pos =
     Position::from_fen("7k/8/K1PR3p/2P5/2P5/6R1/1q6/1r5r w - - 0 1").unwrap();
-  let tt = Arc::new(Mutex::new(make_transposition_table(64 * 1024)));
+  let tt = Arc::new(Mutex::new(make_transposition_table(128 * 1024)));
   let mut search = Search::new(
     pos,
     SearchParams { depth: Some(5), ..Default::default() },
@@ -166,6 +166,53 @@ fn test_repetition() {
     SearchResult::Move(
       Score::Value(0),
       Move { kind: MoveKind::Move, from: Square::D6, to: Square::D8 }
+    ),
+    res
+  );
+}
+
+#[test]
+fn test_fifty_move_rule() {
+  // In this position we move the king to force a draw
+  let pos = Position::from_fen("8/1P5K/8/6q1/8/8/8/k5r1 w - - 99 1").unwrap();
+  let mut search = Search::new(
+    pos,
+    SearchParams { depth: Some(3), ..Default::default() },
+    None,
+    None,
+    None,
+  );
+  let res = search.search();
+  assert_eq!(
+    SearchResult::Move(
+      Score::Value(0),
+      Move { kind: MoveKind::Move, from: Square::H7, to: Square::H8 }
+    ),
+    res
+  );
+
+  // In the same position without draw option we promote the pawn because that
+  // gives the highest score, even though we're going to be mated.  For
+  // this test we need a transposition table to store the PV move because we
+  // want to make sure we make the "best" move despite losing.
+  let pos = Position::from_fen("8/1P5K/8/6q1/8/8/8/k5r1 w - - 98 1").unwrap();
+  let tt = Arc::new(Mutex::new(make_transposition_table(1024 * 1024)));
+  let mut search = Search::new(
+    pos,
+    SearchParams { depth: Some(3), ..Default::default() },
+    Some(tt),
+    None,
+    None,
+  );
+  let res = search.search();
+  assert_eq!(
+    SearchResult::Move(
+      Score::LoseIn(2),
+      Move {
+        kind: MoveKind::PromotionQueen,
+        from: Square::B7,
+        to: Square::B8
+      }
     ),
     res
   );
