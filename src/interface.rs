@@ -1,5 +1,6 @@
 use chessier::attacks::Attacks;
 use chessier::move_generation::MoveGenerator;
+use chessier::piece::Color;
 use chessier::position::*;
 use chessier::search::*;
 use crossbeam_channel::{self, select};
@@ -354,10 +355,18 @@ impl Interface {
           continue;
         }
         Some("ponder") => params.ponder = true,
-        Some("wtime") => params.wtime = Some(parse_msecs(tokens)?),
-        Some("btime") => params.btime = Some(parse_msecs(tokens)?),
-        Some("winc") => params.winc = Some(parse_msecs(tokens)?),
-        Some("binc") => params.binc = Some(parse_msecs(tokens)?),
+        Some("wtime") => {
+          params.time[Color::White as usize] = Some(parse_msecs(tokens)?)
+        }
+        Some("btime") => {
+          params.time[Color::Black as usize] = Some(parse_msecs(tokens)?)
+        }
+        Some("winc") => {
+          params.inc[Color::White as usize] = Some(parse_msecs(tokens)?)
+        }
+        Some("binc") => {
+          params.inc[Color::Black as usize] = Some(parse_msecs(tokens)?)
+        }
         Some("movestogo") => params.movestogo = Some(parse_token(tokens)?),
         Some("depth") => params.depth = Some(parse_token(tokens)?),
         Some("nodes") => params.nodes = Some(parse_token(tokens)?),

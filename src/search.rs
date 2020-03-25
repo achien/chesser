@@ -2,11 +2,10 @@ use crate::evaluation::*;
 use crate::move_generation::MoveGenerator;
 use crate::moves::Move;
 use crate::position::Position;
-use crate::transposition_table::{ReplacementStrategy, TranspositionTable};
-use crate::zobrist_hash::ZobristHash;
+use crate::transposition_table::TranspositionTable;
 use crossbeam_channel::{Receiver, Sender};
 use rand::seq::SliceRandom;
-use std::cmp::{max, Ordering};
+use std::cmp::{max, min, Ordering};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -123,7 +122,8 @@ pub enum SearchResult {
   Move(Score, Move),
 }
 
-const MAX_PV_DEPTH: i32 = 100;
+const MAX_DEPTH: i32 = 1000;
+const DEFAULT_SEARCH_DEPTH: i32 = 7;
 
 #[derive(Debug)]
 pub struct SearchInfo {
@@ -143,20 +143,6 @@ pub struct TTData {
   result: NodeResult,
 }
 
-pub struct ReplaceShallower {}
-
-impl ReplacementStrategy<TTData> for ReplaceShallower {
-  fn should_replace(
-    &self,
-    _old_key: ZobristHash,
-    _new_key: ZobristHash,
-    old_value: &TTData,
-    new_value: &TTData,
-  ) -> bool {
-    new_value.search_depth >= old_value.search_depth
-  }
-}
-
 pub type TTType = TranspositionTable<TTData>;
 
 pub fn make_transposition_table(bytes: usize) -> TTType {
@@ -166,10 +152,8 @@ pub fn make_transposition_table(bytes: usize) -> TTType {
 pub struct SearchParams {
   pub searchmoves: Vec<Move>,
   pub ponder: bool,
-  pub wtime: Option<Duration>,
-  pub btime: Option<Duration>,
-  pub winc: Option<Duration>,
-  pub binc: Option<Duration>,
+  pub time: [Option<Duration>; 2],
+  pub inc: [Option<Duration>; 2],
   pub movestogo: Option<i32>,
   pub depth: Option<i32>,
   pub nodes: Option<u64>,
@@ -183,10 +167,8 @@ impl Default for SearchParams {
     SearchParams {
       searchmoves: Vec::new(),
       ponder: false,
-      wtime: None,
-      btime: None,
-      winc: None,
-      binc: None,
+      time: [None; 2],
+      inc: [None; 2],
       movestogo: None,
       depth: None,
       nodes: None,
@@ -200,6 +182,7 @@ impl Default for SearchParams {
 pub struct Search {
   position: Position,
   params: SearchParams,
+  best_move: Option<NodeResult>,
 
   tt: Option<Arc<Mutex<TTType>>>,
   movegen: MoveGenerator,
@@ -227,6 +210,7 @@ impl Search {
     Search {
       position,
       params,
+      best_move: None,
 
       tt,
       movegen: MoveGenerator::new(),
@@ -250,15 +234,39 @@ impl Search {
     // For now, just search with a depth
     let depth: i32;
     if self.params.infinite {
-      depth = 1000;
+      depth = MAX_DEPTH;
     } else if let Some(specific_depth) = self.params.depth {
       depth = specific_depth;
     } else if let Some(mate_in_depth) = self.params.mate {
       // For mate, we need to search 1 depth deeper to verify there are no
       // legal moves remaining
       depth = mate_in_depth + 1;
+    } else if self.params.movetime.is_some() {
+      depth = MAX_DEPTH;
     } else {
-      depth = 6;
+      // If we have time controls, use those to control how long we search.
+      // Otherwise fall back to a fixed depth.
+      let color = self.position.side_to_move();
+      let time = self.params.time[color as usize];
+      if let Some(time) = time {
+        // - Try to use 5% of remaining time for this search, assynubg
+        //   the game will go on 20 more turns
+        // - Leave at least 1 second on the clock before we press it if we
+        //   have at least 2 seconds remaining, otherwise leave at least half
+        //   of the time remaining
+        let inc =
+          self.params.inc[color as usize].unwrap_or(Duration::from_secs(0));
+        let max_search_time = if time > Duration::from_secs(2) {
+          time - Duration::from_secs(1)
+        } else {
+          time / 2
+        };
+        self.params.movetime =
+          Some(min(max_search_time, (time + 20 * inc) / 20));
+        depth = MAX_DEPTH;
+      } else {
+        depth = DEFAULT_SEARCH_DEPTH;
+      }
     }
     assert!(depth >= 1);
 
@@ -308,13 +316,11 @@ impl Search {
 
     match &res {
       NodeResult::Abort => {
-        // Check transposition table for a move if possible
-        let (score, m) = self.get_pv();
-        if score.is_some() && !m.is_empty() {
-          SearchResult::Move(score.unwrap().clone(), m[0].clone())
-        } else {
-          SearchResult::Abort
-        }
+        // Find the best move so far
+        let (score, pv) = self.get_pv();
+        let score = score.expect("No score found in search");
+        let m = pv.get(0).expect("No best move found in search");
+        SearchResult::Move(score.clone(), m.clone())
       }
       NodeResult::Exact(score, m) => {
         SearchResult::Move(score.clone(), m.clone())
@@ -362,10 +368,9 @@ impl Search {
       if let NodeResult::Abort = node_res {
         // do not store abort
       } else {
-        let hash = pos.zobrist_hash();
         let mut tt = tt.lock().unwrap();
         tt.insert(
-          hash,
+          pos.zobrist_hash(),
           TTData { search_depth: depth_left, result: node_res.clone() },
         );
       }
@@ -425,6 +430,15 @@ impl Search {
       if score > alpha {
         alpha = score;
         best_move = Some(m);
+        // Calculate incremental best move.  This ensures that we keep a best
+        // move around even if the transposition table entry for the root
+        // position is overwritten.  This is on safe if we only improve the
+        // best move during search, so we must order the best move first
+        // during move ordering.
+        if cur_depth == 0 {
+          debug_assert_eq!(beta, &MAX_SCORE);
+          self.best_move = Some(NodeResult::Exact(alpha.clone(), m));
+        }
       }
     }
 
@@ -595,9 +609,17 @@ impl Search {
     // Keep track of positions to prevent loops
     let mut seen = HashSet::new();
     let mut depth: i32 = 0;
+
+    // Use incremental best move if we've calculated it
+    if let Some(NodeResult::Exact(s, m)) = &self.best_move {
+      score = Some(s.clone());
+      pv.push(*m);
+      pos.make_move(*m);
+    }
+
     while let Some(data) = self.tt_load_data(&pos) {
       depth += 1;
-      if depth > MAX_PV_DEPTH {
+      if depth > MAX_DEPTH {
         break;
       }
       if let NodeResult::Exact(s, m) | NodeResult::LowerBound(s, m) =

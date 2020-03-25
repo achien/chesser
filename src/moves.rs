@@ -92,12 +92,7 @@ impl Move {
       MoveKind::PromotionCaptureQueen => "q",
       _ => "",
     };
-    format!(
-      "{}{}{}",
-      self.from.algebraic(),
-      self.to.algebraic(),
-      promotion
-    )
+    format!("{}{}{}", self.from.algebraic(), self.to.algebraic(), promotion)
   }
 }
 
@@ -107,18 +102,10 @@ mod tests {
 
   #[test]
   fn test_long_algebraic() {
-    let m = Move {
-      kind: MoveKind::Move,
-      from: Square::F2,
-      to: Square::F3,
-    };
+    let m = Move { kind: MoveKind::Move, from: Square::F2, to: Square::F3 };
     assert_eq!("f2f3", m.long_algebraic());
 
-    let m = Move {
-      kind: MoveKind::Capture,
-      from: Square::F2,
-      to: Square::E3,
-    };
+    let m = Move { kind: MoveKind::Capture, from: Square::F2, to: Square::E3 };
     assert_eq!("f2e3", m.long_algebraic());
 
     let m = Move {
