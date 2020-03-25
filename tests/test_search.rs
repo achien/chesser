@@ -83,8 +83,8 @@ fn test_mate_in_two() {
 
 #[test]
 fn test_pv() {
-  let tt = Arc::new(Mutex::new(make_transposition_table(1024 * 1024)));
   let pos = Position::from_fen("r6k/6pp/8/8/1R6/8/8/1R3K2 w - - 0 1").unwrap();
+  let tt = Arc::new(Mutex::new(make_transposition_table(64 * 1024)));
   let mut search = Search::new(
     pos,
     SearchParams { depth: Some(4), ..Default::default() },
@@ -146,4 +146,27 @@ fn test_quiesce() {
     ),
     _ => panic!("Expected move as search result"),
   }
+}
+
+#[test]
+fn test_repetition() {
+  // In this position we force a draw
+  let pos =
+    Position::from_fen("7k/8/K1PR3p/2P5/2P5/6R1/1q6/1r5r w - - 0 1").unwrap();
+  let tt = Arc::new(Mutex::new(make_transposition_table(64 * 1024)));
+  let mut search = Search::new(
+    pos,
+    SearchParams { depth: Some(5), ..Default::default() },
+    Some(tt),
+    None,
+    None,
+  );
+  let res = search.search();
+  assert_eq!(
+    SearchResult::Move(
+      Score::Value(0),
+      Move { kind: MoveKind::Move, from: Square::D6, to: Square::D8 }
+    ),
+    res
+  );
 }

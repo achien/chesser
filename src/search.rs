@@ -39,6 +39,7 @@ pub enum Score {
 
 const MIN_SCORE: Score = Score::LoseIn(-1);
 const MAX_SCORE: Score = Score::WinIn(-1);
+const DRAW_SCORE: Score = Score::Value(0);
 
 impl Ord for Score {
   fn cmp(&self, other: &Self) -> Ordering {
@@ -141,6 +142,16 @@ pub struct SearchInfo {
 pub struct TTData {
   search_depth: i32,
   result: NodeResult,
+}
+
+impl TTData {
+  fn hash_move(&self) -> Option<&Move> {
+    match &self.result {
+      NodeResult::Abort => panic!("Should not store aborted result"),
+      NodeResult::LowerBound(_, m) | NodeResult::Exact(_, m) => Some(m),
+      _ => None,
+    }
+  }
 }
 
 pub type TTType = TranspositionTable<TTData>;
@@ -299,6 +310,7 @@ impl Search {
       }
     }
 
+    // Some debug logging.  Remove this eventually.
     if let Some(tt) = &self.tt {
       let tt = tt.lock().unwrap();
       eprintln!(
@@ -410,15 +422,19 @@ impl Search {
       has_legal_move = true;
 
       // Calculate the score
-      let score = match self.alpha_beta_search(
-        pos,
-        &beta.negate_for_child(),
-        &alpha.negate_for_child(),
-        cur_depth + 1,
-        depth_left - 1,
-      ) {
-        NodeResult::Abort => return NodeResult::Abort,
-        child_result => child_result.score().negate_for_parent(),
+      let score = if pos.is_repetition() {
+        DRAW_SCORE
+      } else {
+        match self.alpha_beta_search(
+          pos,
+          &beta.negate_for_child(),
+          &alpha.negate_for_child(),
+          cur_depth + 1,
+          depth_left - 1,
+        ) {
+          NodeResult::Abort => return NodeResult::Abort,
+          child_result => child_result.score().negate_for_parent(),
+        }
       };
       pos.unmake_move();
 
@@ -560,7 +576,7 @@ impl Search {
 
   fn tt_load(
     &mut self,
-    pos: &Position,
+    pos: &mut Position,
     alpha: &Score,
     beta: &Score,
     depth_left: i32,
@@ -568,31 +584,10 @@ impl Search {
     let mut result = None;
     let mut hash_move = None;
     if let Some(data) = self.tt_load_data(pos) {
-      if data.search_depth >= depth_left {
-        match &data.result {
-          NodeResult::Abort => panic!("Should not store aborted result"),
-          NodeResult::LowerBound(score, _) => {
-            if score >= beta {
-              result = Some(data.result.clone());
-            }
-          }
-          NodeResult::UpperBound(score) => {
-            if score <= alpha {
-              result = Some(data.result.clone());
-            }
-          }
-          NodeResult::Exact(_, _) | NodeResult::Leaf(_) => {
-            result = Some(data.result.clone());
-          }
-        };
+      if self.can_use_tt_data(&data, pos, alpha, beta, depth_left) {
+        result = Some(data.result.clone());
       }
-      match &data.result {
-        NodeResult::Abort => panic!("Should not store aborted result"),
-        NodeResult::LowerBound(_, m) | NodeResult::Exact(_, m) => {
-          hash_move = Some(m.clone());
-        }
-        _ => (),
-      }
+      hash_move = data.hash_move().cloned();
     }
     (result, hash_move)
   }
@@ -604,6 +599,44 @@ impl Search {
     } else {
       None
     }
+  }
+
+  fn can_use_tt_data(
+    &self,
+    data: &TTData,
+    pos: &mut Position,
+    alpha: &Score,
+    beta: &Score,
+    depth_left: i32,
+  ) -> bool {
+    // We can only use the result from a deeper depth
+    if data.search_depth < depth_left {
+      return false;
+    }
+
+    // For bounded nodes the bounds need to agree
+    if let NodeResult::LowerBound(lb, _) = &data.result {
+      if lb < beta {
+        return false;
+      }
+    } else if let NodeResult::UpperBound(ub) = &data.result {
+      if ub > alpha {
+        return false;
+      }
+    }
+
+    // If the hash move leads to a draw (from repetition), we need to
+    // re-evaluate the position
+    if let Some(hash_move) = data.hash_move() {
+      pos.make_move(hash_move);
+      if pos.is_repetition() {
+        pos.unmake_move();
+        return false;
+      }
+      pos.unmake_move();
+    }
+
+    true
   }
 
   pub fn get_pv(&self) -> (Option<Score>, Vec<Move>) {

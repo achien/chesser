@@ -3,6 +3,7 @@ use crate::moves::*;
 use crate::piece::*;
 use crate::square::*;
 use crate::zobrist_hash::*;
+use std::collections::HashMap;
 use std::fmt;
 
 const STARTPOS_FEN: &str =
@@ -52,6 +53,8 @@ pub struct Position {
   // Tracks moves that were made, and irreversible state like castling rights,
   // the halfmove clock, and en passant target
   state: Vec<State>,
+  // Tracks posistions that were seen for draw by reptition
+  repetitions: HashMap<ZobristHash, i32>,
 
   zobrist_hasher: &'static ZobristHasher,
   squares_zobrist: ZobristHash,
@@ -152,6 +155,7 @@ impl PositionBuilder {
         en_passant_target: self.en_passant_target,
         halfmove_clock: self.halfmove_clock,
       }],
+      repetitions: HashMap::new(),
 
       zobrist_hasher: &ZOBRIST_HASHER,
       squares_zobrist: Default::default(),
@@ -159,6 +163,7 @@ impl PositionBuilder {
     for &(square, piece, color) in &self.pieces {
       position.place(square, piece, color);
     }
+    position.repetitions.insert(position.zobrist_hash(), 1);
     position
   }
 }
@@ -479,6 +484,7 @@ impl Position {
       Color::White => self.fullmove_count,
       Color::Black => self.fullmove_count + 1,
     };
+
     let state = self.state.last().unwrap();
 
     let next_ep_target = if m.kind == MoveKind::DoublePawnPush {
@@ -524,11 +530,20 @@ impl Position {
       en_passant_target: next_ep_target,
       halfmove_clock: next_halfmove_clock,
     });
+
+    // Zobrist hash depends on state and needs to be computed after
+    let hash = self.zobrist_hash();
+    let entry = self.repetitions.entry(hash).or_insert(0);
+    *entry += 1;
   }
 
   // This should do the exact opposite of make_move.  Try to do everything
   // in reverse order.
   pub fn unmake_move(&mut self) {
+    let hash = self.zobrist_hash();
+    let repetitions = self.repetitions.get_mut(&hash).unwrap();
+    *repetitions -= 1;
+
     let state = self.state.pop().unwrap();
     let move_color = self.side_to_move.other();
     let MoveInfo { last_move: m, piece, captured } = state.move_info.unwrap();
@@ -577,6 +592,14 @@ impl Position {
       Color::Black => self.fullmove_count - 1,
     };
     self.side_to_move = move_color;
+  }
+
+  pub fn is_repetition(&self) -> bool {
+    let hash = self.zobrist_hash();
+    match self.repetitions.get(&hash) {
+      None => false,
+      Some(repetitions) => repetitions > &1,
+    }
   }
 
   pub fn zobrist_hash(&self) -> ZobristHash {
@@ -1110,5 +1133,39 @@ mod tests {
     pos.make_move(&m2);
     pos.make_move(&m);
     assert_eq!(hash123, pos.zobrist_hash());
+  }
+
+  #[test]
+  fn test_draw() {
+    let mut pos = Position::startpos();
+    assert_eq!(false, pos.is_repetition());
+    pos.make_move(&Move {
+      kind: MoveKind::Move,
+      from: Square::G1,
+      to: Square::H3,
+    });
+    assert_eq!(false, pos.is_repetition());
+    pos.make_move(&Move {
+      kind: MoveKind::Move,
+      from: Square::B8,
+      to: Square::C6,
+    });
+    assert_eq!(false, pos.is_repetition());
+    pos.make_move(&Move {
+      kind: MoveKind::Move,
+      from: Square::H3,
+      to: Square::G1,
+    });
+    assert_eq!(false, pos.is_repetition());
+    pos.make_move(&Move {
+      kind: MoveKind::Move,
+      from: Square::C6,
+      to: Square::B8,
+    });
+    // The first repeated position is a draw
+    assert_eq!(true, pos.is_repetition());
+
+    pos.unmake_move();
+    assert_eq!(false, pos.is_repetition());
   }
 }
