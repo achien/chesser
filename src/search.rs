@@ -400,7 +400,7 @@ impl Search {
     let mut best_move: Option<Move> = None;
     let mut has_legal_move = false;
     for m in moves {
-      pos.make_move(m);
+      pos.make_move(&m);
 
       // Skip any illegal moves
       if self.movegen.in_check(&pos, color) {
@@ -424,7 +424,7 @@ impl Search {
 
       // Node pruned: beta-cutoff
       if &score >= beta {
-        return NodeResult::LowerBound(score, m);
+        return NodeResult::LowerBound(score, m.clone());
       }
       // New best move found
       if score > alpha {
@@ -437,7 +437,8 @@ impl Search {
         // during move ordering.
         if cur_depth == 0 {
           debug_assert_eq!(beta, &MAX_SCORE);
-          self.best_move = Some(NodeResult::Exact(alpha.clone(), m));
+          self.best_move =
+            Some(NodeResult::Exact(alpha.clone(), best_move.clone().unwrap()));
         }
       }
     }
@@ -490,7 +491,7 @@ impl Search {
 
     let mut max_depth = cur_depth;
     for m in self.gen_ordered_captures(pos) {
-      pos.make_move(m);
+      pos.make_move(&m);
       // Count nodes here so we don't double count (ugh)
       self.nodes_visited += 1;
 
@@ -547,7 +548,10 @@ impl Search {
       .moves(pos)
       .into_iter()
       .filter(|m| m.kind.is_any_capture())
-      .map(|m| (m, get_piece_score(pos.at(m.to).0)))
+      .map(|m| {
+        let score = get_piece_score(pos.at(m.to).0);
+        (m, score)
+      })
       .collect();
     // Check the highest value captures first
     captures_by_value.sort_by(|a, b| b.1.cmp(&a.1));
@@ -613,8 +617,8 @@ impl Search {
     // Use incremental best move if we've calculated it
     if let Some(NodeResult::Exact(s, m)) = &self.best_move {
       score = Some(s.clone());
-      pv.push(*m);
-      pos.make_move(*m);
+      pv.push(m.clone());
+      pos.make_move(m);
     }
 
     while let Some(data) = self.tt_load_data(&pos) {
@@ -633,7 +637,7 @@ impl Search {
           score = Some(s.clone());
         }
         pv.push(m.clone());
-        pos.make_move(m);
+        pos.make_move(&m);
       } else {
         break;
       }

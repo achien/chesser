@@ -1251,7 +1251,7 @@ mod tests {
       }),
       movegen.parse_move(&pos, "e2e4"),
     );
-    pos.make_move(movegen.parse_move(&pos, "e2e4").unwrap());
+    pos.make_move(&movegen.parse_move(&pos, "e2e4").unwrap());
     assert_eq!(
       Ok(Move {
         kind: MoveKind::DoublePawnPush,

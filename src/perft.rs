@@ -69,7 +69,7 @@ impl Perft {
     update_count: &mut F,
   ) {
     for m in self.movegen.moves(pos) {
-      pos.make_move(m);
+      pos.make_move(&m);
       if !self.movegen.in_check(pos, pos.side_to_move().other()) {
         if depth > 1 {
           self.perft_helper(pos, depth - 1, update_count);

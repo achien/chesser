@@ -322,7 +322,7 @@ impl Interface {
           ))
         }
       };
-      position.make_move(m);
+      position.make_move(&m);
     }
     Ok(position)
   }
@@ -383,7 +383,7 @@ impl Interface {
 
 fn parse_token<T: FromStr>(tokens: &mut SplitWhitespace) -> Result<T, String> {
   let num = match tokens.next() {
-    None => return Err(format!("expected token but got nothing")),
+    None => return Err("expected token but got nothing".to_string()),
     Some(x) => x,
   };
   match num.parse::<T>() {

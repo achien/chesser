@@ -19,7 +19,7 @@ pub enum MoveKind {
   Move,
 }
 
-#[derive(Debug, Clone, Copy, Eq, Ord, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, Eq, Ord, PartialOrd, PartialEq)]
 pub struct Move {
   pub kind: MoveKind,
   pub from: Square,

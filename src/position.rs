@@ -367,11 +367,12 @@ impl Position {
     self
   }
 
-  pub fn make_move(&mut self, m: Move) {
+  pub fn make_move(&mut self, m: &Move) {
     let color = self.side_to_move;
     let (piece, piece_color) = self.at(m.from);
     debug_assert!(color == piece_color);
-    let mut move_info = MoveInfo { last_move: m, piece, captured: Piece::Nil };
+    let mut move_info =
+      MoveInfo { last_move: m.clone(), piece, captured: Piece::Nil };
     let home_rank = color.home_rank();
 
     // Remove captured piece
@@ -747,7 +748,7 @@ mod tests {
         .side_to_move(color)
         .place(Square::G1, Piece::Knight, color)
         .build();
-      pos.make_move(Move {
+      pos.make_move(&Move {
         kind: MoveKind::Move,
         from: Square::G1,
         to: Square::F3,
@@ -768,7 +769,7 @@ mod tests {
       .place(Square::A3, Piece::Bishop, Color::White)
       .place(Square::C5, Piece::Knight, Color::Black)
       .build();
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Capture,
       from: Square::A3,
       to: Square::C5,
@@ -785,7 +786,7 @@ mod tests {
     let mut pos = PositionBuilder::new()
       .place(Square::H7, Piece::WhitePawn, Color::White)
       .build();
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::PromotionKnight,
       from: Square::H7,
       to: Square::H8,
@@ -836,7 +837,7 @@ mod tests {
     ];
     for &(color, move_kind, king_from, king_to, rook_from, rook_to) in cases {
       let mut pos = builder.side_to_move(color).build();
-      pos.make_move(Move { kind: move_kind, from: king_from, to: king_to });
+      pos.make_move(&Move { kind: move_kind, from: king_from, to: king_to });
       assert_eq!((Piece::King, color), pos.at(king_to));
       assert_eq!((Piece::Rook, color), pos.at(rook_to));
       pos.unmake_move();
@@ -864,7 +865,7 @@ mod tests {
         builder.side_to_move(color).en_passant_target(Some(ep_target)).build();
       let our_pawn = pos.at(from);
       let their_pawn = pos.at(captured_square);
-      pos.make_move(Move {
+      pos.make_move(&Move {
         kind: MoveKind::EnPassantCapture,
         from,
         to: ep_target,
@@ -887,7 +888,7 @@ mod tests {
       .build();
     assert_eq!(1, pos.fullmove_count());
 
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::A1,
       to: Square::A2,
@@ -895,21 +896,21 @@ mod tests {
     // Move count only changes after black moves
     assert_eq!(1, pos.fullmove_count());
 
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::H8,
       to: Square::H7,
     });
     assert_eq!(2, pos.fullmove_count());
 
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::A2,
       to: Square::A1,
     });
     assert_eq!(2, pos.fullmove_count());
 
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::H7,
       to: Square::H8,
@@ -934,14 +935,14 @@ mod tests {
       .build();
     assert_eq!(None, pos.en_passant_target());
 
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::DoublePawnPush,
       from: Square::B2,
       to: Square::B4,
     });
     assert_eq!(Some(Square::B3), pos.en_passant_target());
 
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::DoublePawnPush,
       from: Square::D7,
       to: Square::D5,
@@ -966,7 +967,7 @@ mod tests {
     assert_eq!(35, pos.halfmove_clock());
 
     // Halfmove clock increments on move (Bh6-g5)
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::H6,
       to: Square::G5,
@@ -974,7 +975,7 @@ mod tests {
     assert_eq!(36, pos.halfmove_clock());
 
     // Halfmove clock resets on pawn move (a5-a4)
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::A5,
       to: Square::A4,
@@ -982,7 +983,7 @@ mod tests {
     assert_eq!(0, pos.halfmove_clock());
 
     // Increments again on move (Bg5-f4)
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::G5,
       to: Square::F4,
@@ -990,7 +991,7 @@ mod tests {
     assert_eq!(1, pos.halfmove_clock());
 
     // Resets on capture (Ne2xf4)
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Capture,
       from: Square::E2,
       to: Square::F4,
@@ -1023,7 +1024,7 @@ mod tests {
     assert_castling(&pos, true, true, true, true);
 
     // Unrelated move does not change castling state
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::E4,
       to: Square::F2,
@@ -1031,7 +1032,7 @@ mod tests {
     assert_castling(&pos, true, true, true, true);
 
     // King move clears castling state
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::E8,
       to: Square::G8,
@@ -1039,7 +1040,7 @@ mod tests {
     assert_castling(&pos, true, true, false, false);
 
     // Castling also clears castling state
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::CastleKingside,
       from: Square::E1,
       to: Square::G1,
@@ -1048,14 +1049,14 @@ mod tests {
 
     // Rook move clears castling state on each side
     let mut pos = builder.clone().build();
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::H1,
       to: Square::H2,
     });
     assert_castling(&pos, false, true, true, true);
 
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::A8,
       to: Square::A7,
@@ -1064,7 +1065,7 @@ mod tests {
 
     // Rook capture clears castling state
     let mut pos = builder.clone().build();
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Capture,
       from: Square::A1,
       to: Square::A8,
@@ -1072,7 +1073,7 @@ mod tests {
     assert_castling(&pos, true, false, true, false);
 
     let mut pos = builder.clone().side_to_move(Color::Black).build();
-    pos.make_move(Move {
+    pos.make_move(&Move {
       kind: MoveKind::Capture,
       from: Square::H8,
       to: Square::H1,
@@ -1086,7 +1087,7 @@ mod tests {
     let mut pos = Position::startpos();
     let m = Move { kind: MoveKind::Move, from: Square::G1, to: Square::F3 };
     let hash = pos.zobrist_hash();
-    pos.make_move(m);
+    pos.make_move(&m);
     assert_ne!(hash, pos.zobrist_hash());
     pos.unmake_move();
     assert_eq!(hash, pos.zobrist_hash());
@@ -1098,16 +1099,16 @@ mod tests {
       to: Square::H5,
     };
     let m3 = Move { kind: MoveKind::Move, from: Square::B2, to: Square::B3 };
-    pos.make_move(m);
-    pos.make_move(m2);
-    pos.make_move(m3);
+    pos.make_move(&m);
+    pos.make_move(&m2);
+    pos.make_move(&m3);
     let hash123 = pos.zobrist_hash();
     pos.unmake_move();
     pos.unmake_move();
     pos.unmake_move();
-    pos.make_move(m3);
-    pos.make_move(m2);
-    pos.make_move(m);
+    pos.make_move(&m3);
+    pos.make_move(&m2);
+    pos.make_move(&m);
     assert_eq!(hash123, pos.zobrist_hash());
   }
 }
