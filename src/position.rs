@@ -8,6 +8,8 @@ use std::fmt;
 const STARTPOS_FEN: &str =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+pub const HALFMOVE_CLOCK_AT_DRAW: i32 = 100;
+
 #[derive(Debug, PartialEq)]
 pub enum FENParseError {
   TooFewTokens,
@@ -592,7 +594,7 @@ impl Position {
   }
 
   pub fn is_draw(&self) -> bool {
-    self.halfmove_clock() >= 100 || self.is_repetition()
+    self.halfmove_clock() >= HALFMOVE_CLOCK_AT_DRAW || self.is_repetition()
   }
 
   fn is_repetition(&self) -> bool {

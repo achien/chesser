@@ -1,7 +1,7 @@
 use crate::evaluation::*;
 use crate::move_generation::MoveGenerator;
 use crate::moves::Move;
-use crate::position::Position;
+use crate::position::{Position, HALFMOVE_CLOCK_AT_DRAW};
 use crate::transposition_table::TranspositionTable;
 use crossbeam_channel::{Receiver, Sender};
 use rand::seq::SliceRandom;
@@ -610,6 +610,13 @@ impl Search {
   ) -> bool {
     // We can only use the result from a deeper depth
     if data.search_depth < depth_left {
+      return false;
+    }
+
+    // Throw away the result if it might lead to a draw.  Search around
+    // halfmove clock 100 probably has a lot of issues with cached results
+    // but hopefully we won't run into if often.
+    if pos.halfmove_clock() + data.search_depth >= HALFMOVE_CLOCK_AT_DRAW {
       return false;
     }
 

@@ -15,18 +15,14 @@ fn test_positions(cases: &[(&str, &str, &str, i32)]) {
       None,
     );
     let res = search.search();
-    match res {
-      SearchResult::Move(score, m) => {
-        assert_eq!(
-          move_lan,
-          m.long_algebraic(),
-          "{} (score={:?})",
-          name,
-          score
-        );
-      }
-      _ => panic!("Bad SearchResult {:?} for {}", res, name),
-    };
+    assert_eq!(move_lan, result_move(&res).long_algebraic(), "{}", name);
+  }
+}
+
+fn result_move(result: &SearchResult) -> &Move {
+  match result {
+    SearchResult::Move(_, m) => m,
+    _ => panic!("SearchResult did not have a move: {:?}", result),
   }
 }
 
@@ -120,13 +116,10 @@ fn test_quiesce() {
     None,
   );
   let res = search.search();
-  match res {
-    SearchResult::Move(_, res_move) => assert_eq!(
-      Move { kind: MoveKind::Capture, from: Square::D5, to: Square::C6 },
-      res_move
-    ),
-    _ => panic!("Expected move as search result"),
-  }
+  assert_eq!(
+    &Move { kind: MoveKind::Capture, from: Square::D5, to: Square::C6 },
+    result_move(&res)
+  );
 
   // If the bishop is not defending the queen pxR loses the queen
   let pos =
@@ -139,13 +132,10 @@ fn test_quiesce() {
     None,
   );
   let res = search.search();
-  match res {
-    SearchResult::Move(_, res_move) => assert_ne!(
-      Move { kind: MoveKind::Capture, from: Square::D5, to: Square::C6 },
-      res_move
-    ),
-    _ => panic!("Expected move as search result"),
-  }
+  assert_ne!(
+    &Move { kind: MoveKind::Capture, from: Square::D5, to: Square::C6 },
+    result_move(&res)
+  );
 }
 
 #[test]
@@ -216,4 +206,41 @@ fn test_fifty_move_rule() {
     ),
     res
   );
+}
+
+#[test]
+fn test_fifty_move_rule_tt() {
+  let tt = Arc::new(Mutex::new(make_transposition_table(1024 * 1024)));
+  // In this position, we have two options: a knight fork to win a queen and
+  // a pawn fork to win a rook.  Normally we'd take the knight fork but if
+  // the halfmove clock is almost 100 we might need to take the pawn fork to
+  // avoid a draw.
+  let pos =
+    Position::from_fen("1k2q3/ppp5/8/1n2n2p/4P1p1/1P1P1P2/Q3K1R1/8 b - - 0 1")
+      .unwrap();
+  let mut search = Search::new(
+    pos,
+    SearchParams { depth: Some(3), ..Default::default() },
+    Some(tt.clone()),
+    None,
+    None,
+  );
+  let res = search.search();
+  assert_eq!("b5c3", result_move(&res).long_algebraic());
+
+  // If we try again but the halfmove clock is at 98, we move the pawn to
+  // avoid a draw
+  let pos = Position::from_fen(
+    "1k2q3/ppp5/8/1n2n2p/4P1p1/1P1P1P2/Q3K1R1/8 b - - 98 1",
+  )
+  .unwrap();
+  let mut search = Search::new(
+    pos,
+    SearchParams { depth: Some(3), ..Default::default() },
+    Some(tt),
+    None,
+    None,
+  );
+  let res = search.search();
+  assert_eq!("g4f3", result_move(&res).long_algebraic());
 }
