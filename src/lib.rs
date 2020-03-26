@@ -1,6 +1,9 @@
 #![allow(clippy::complexity)]
 #![allow(clippy::redundant_clone)]
 
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 pub mod attacks;
 pub mod bitboard;
 pub mod evaluation;
