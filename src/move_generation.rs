@@ -27,6 +27,12 @@ pub enum MoveParseError {
   IllegalMove,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum Kind {
+  ALL,
+  CAPTURES,
+}
+
 pub struct MoveGenerator {
   attacks: &'static Attacks,
 }
@@ -43,19 +49,29 @@ impl MoveGenerator {
   }
 
   pub fn moves(&self, position: &Position) -> Vec<Move> {
-    self.moves_for_color(position, position.side_to_move())
+    self.moves_for_color(Kind::ALL, position, position.side_to_move())
   }
 
-  fn moves_for_color(&self, position: &Position, color: Color) -> Vec<Move> {
-    let mut moves: Vec<Move> = Vec::new();
+  pub fn captures(&self, position: &Position) -> Vec<Move> {
+    self.moves_for_color(Kind::CAPTURES, position, position.side_to_move())
+  }
+
+  fn moves_for_color(
+    &self,
+    kind: Kind,
+    position: &Position,
+    color: Color,
+  ) -> Vec<Move> {
+    let mut moves: Vec<Move> = Vec::with_capacity(128);
     for square in position.occupied_by_color(color) {
-      self.moves_from(&mut moves, position, color, square);
+      self.moves_from(kind, &mut moves, position, color, square);
     }
     moves
   }
 
   fn moves_from(
     &self,
+    kind: Kind,
     moves: &mut Vec<Move>,
     position: &Position,
     color: Color,
@@ -74,14 +90,16 @@ impl MoveGenerator {
           color,
           Rank::R8,
         );
-        self.gen_pawn_pushes(
-          moves,
-          position,
-          from,
-          PawnDirection::White,
-          Rank::R2,
-          Rank::R8,
-        );
+        if kind == Kind::ALL {
+          self.gen_pawn_pushes(
+            moves,
+            position,
+            from,
+            PawnDirection::White,
+            Rank::R2,
+            Rank::R8,
+          );
+        }
       }
       Piece::BlackPawn => {
         self.gen_pawn_captures(
@@ -92,16 +110,19 @@ impl MoveGenerator {
           color,
           Rank::R1,
         );
-        self.gen_pawn_pushes(
-          moves,
-          position,
-          from,
-          PawnDirection::Black,
-          Rank::R7,
-          Rank::R1,
-        );
+        if kind == Kind::ALL {
+          self.gen_pawn_pushes(
+            moves,
+            position,
+            from,
+            PawnDirection::Black,
+            Rank::R7,
+            Rank::R1,
+          );
+        }
       }
       Piece::Knight => self.gen_attack_moves(
+        kind,
         moves,
         position,
         from,
@@ -110,6 +131,7 @@ impl MoveGenerator {
         self.attacks.knight(from),
       ),
       Piece::Bishop => self.gen_attack_moves(
+        kind,
         moves,
         position,
         from,
@@ -118,6 +140,7 @@ impl MoveGenerator {
         self.attacks.bishop(from, position.occupied()),
       ),
       Piece::Rook => self.gen_attack_moves(
+        kind,
         moves,
         position,
         from,
@@ -126,6 +149,7 @@ impl MoveGenerator {
         self.attacks.rook(from, position.occupied()),
       ),
       Piece::Queen => self.gen_attack_moves(
+        kind,
         moves,
         position,
         from,
@@ -135,6 +159,7 @@ impl MoveGenerator {
       ),
       Piece::King => {
         self.gen_attack_moves(
+          kind,
           moves,
           position,
           from,
@@ -142,8 +167,10 @@ impl MoveGenerator {
           Piece::King,
           self.attacks.king(from),
         );
-        self.gen_castle_kside(moves, position, from, color);
-        self.gen_castle_qside(moves, position, from, color);
+        if kind == Kind::ALL {
+          self.gen_castle_kside(moves, position, from, color);
+          self.gen_castle_qside(moves, position, from, color);
+        }
       }
       Piece::Nil => panic!("Unexpected move_from on empty square"),
     };
@@ -151,6 +178,7 @@ impl MoveGenerator {
 
   fn gen_attack_moves(
     &self,
+    kind: Kind,
     moves: &mut Vec<Move>,
     position: &Position,
     from: Square,
@@ -162,7 +190,9 @@ impl MoveGenerator {
     for to in to_squares {
       let (to_piece, to_piece_color) = position.at(to);
       if to_piece == Piece::Nil {
-        moves.push(Move { kind: MoveKind::Move, from, to });
+        if kind == Kind::ALL {
+          moves.push(Move { kind: MoveKind::Move, from, to });
+        }
       } else if to_piece_color != color {
         moves.push(Move { kind: MoveKind::Capture, from, to });
       }
@@ -604,6 +634,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -618,6 +649,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -633,6 +665,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -738,6 +771,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -779,6 +813,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -840,6 +875,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -875,6 +911,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -890,6 +927,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -905,6 +943,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::White,
@@ -933,6 +972,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::Black,
@@ -949,6 +989,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::Black,
@@ -964,6 +1005,7 @@ mod tests {
       .build();
     let mut moves = Vec::new();
     MoveGenerator::new().moves_from(
+      Kind::ALL,
       &mut moves,
       &position,
       Color::Black,

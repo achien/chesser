@@ -299,8 +299,10 @@ impl Search {
           // deepening we can't do any better.  If we are being mated we
           // keep searching to find the move that delays mate for as long
           // as possible.
-          if let Score::WinIn(_) = score {
-            break;
+          if let Score::WinIn(ply) = score {
+            if ply <= &iterative_deepening_depth {
+              break;
+            }
           }
         }
         _ => panic!(
@@ -562,19 +564,13 @@ impl Search {
     &self,
     pos: &Position,
   ) -> impl Iterator<Item = Move> {
-    let mut captures_by_value: Vec<(Move, i32)> = self
-      .movegen
-      .moves(pos)
-      .into_iter()
-      .filter(|m| m.kind.is_any_capture())
-      .map(|m| {
-        let score = get_piece_score(pos.at(m.to).0);
-        (m, score)
-      })
-      .collect();
-    // Check the highest value captures first
-    captures_by_value.sort_by(|a, b| b.1.cmp(&a.1));
-    captures_by_value.into_iter().map(|x| x.0)
+    let mut captures = self.movegen.captures(pos);
+    captures.sort_by(|a, b| {
+      let a_score = get_piece_score(pos.at(a.to).0);
+      let b_score = get_piece_score(pos.at(b.to).0);
+      b_score.cmp(&a_score)
+    });
+    captures.into_iter()
   }
 
   fn tt_load(
