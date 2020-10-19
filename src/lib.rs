@@ -1,6 +1,7 @@
 #![allow(clippy::complexity)]
 #![allow(clippy::redundant_clone)]
 
+#[cfg(target_os = "macos")]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 

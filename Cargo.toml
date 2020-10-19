@@ -23,10 +23,12 @@ debug = true
 
 [dependencies]
 crossbeam-channel = "0.4"
-jemallocator = "0.3.0"
 lazy_static = "1.4.0"
 num = "0.2"
 num_enum = "0.4"
 rand = "0.7"
 rand_chacha = "0.2.2"
 static_assertions = "1.1.0"
+
+[target.'cfg(macos)'.dependencies]
+jemallocator = "0.3.0"
