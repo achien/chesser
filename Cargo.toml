@@ -22,13 +22,13 @@ debug = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossbeam-channel = "0.4"
+crossbeam-channel = "0.5.0"
 lazy_static = "1.4.0"
-num = "0.2"
-num_enum = "0.4"
-rand = "0.7"
-rand_chacha = "0.2.2"
+num = "0.4"
+num_enum = "0.5.1"
+rand = "0.8.0"
+rand_chacha = "0.3.0"
 static_assertions = "1.1.0"
 
 [target.'cfg(macos)'.dependencies]
-jemallocator = "0.3.0"
+jemallocator = "0.3.2"

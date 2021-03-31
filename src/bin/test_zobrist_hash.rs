@@ -169,7 +169,7 @@ fn bucket_distribution(
     frequencies[hash.get_bucket(buckets)] += 1.;
   }
 
-  // https://en.wikipedia.org/wiki/Hash_function#
+  // https://en.wikipedia.org/wiki/Hash_function#Testing_and_measurement
   // First I tried using a Chi-squared test but the p-value was always 0.
   // So instead of figuring out why it's broken that told me my code is
   // correct.
