@@ -265,8 +265,8 @@ impl Search {
         // - Leave at least 1 second on the clock before we press it if we
         //   have at least 2 seconds remaining, otherwise leave at least half
         //   of the time remaining
-        let inc =
-          self.params.inc[color as usize].unwrap_or(Duration::from_secs(0));
+        let inc = self.params.inc[color as usize]
+          .unwrap_or_else(|| Duration::from_secs(0));
         let max_search_time = if time > Duration::from_secs(2) {
           time - Duration::from_secs(1)
         } else {
@@ -334,7 +334,7 @@ impl Search {
         let (score, pv) = self.get_pv();
         let score = score.expect("No score found in search");
         let m = pv.get(0).expect("No best move found in search");
-        SearchResult::Move(score.clone(), m.clone())
+        SearchResult::Move(score, m.clone())
       }
       NodeResult::Exact(score, m) => {
         SearchResult::Move(score.clone(), m.clone())
@@ -445,7 +445,7 @@ impl Search {
 
       // Node pruned: beta-cutoff
       if &score >= beta {
-        return NodeResult::LowerBound(score, m.clone());
+        return NodeResult::LowerBound(score, m);
       }
       // New best move found
       if score > alpha {
@@ -555,7 +555,9 @@ impl Search {
     let mut rng = rand::thread_rng();
     moves.shuffle(&mut rng);
     if let Some(hash_move) = hash_move {
-      moves.iter().position(|m| m == hash_move).map(|idx| moves.swap(0, idx));
+      if let Some(hash_move_idx) = moves.iter().position(|m| m == hash_move) {
+        moves.swap(0, hash_move_idx)
+      }
     }
     moves
   }

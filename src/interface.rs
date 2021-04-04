@@ -74,8 +74,7 @@ impl OutputThread {
   }
 
   fn print_searchinfo(si: SearchInfo) {
-    let mut parts: Vec<String> = Vec::new();
-    parts.push("info".to_string());
+    let mut parts: Vec<String> = vec!["info".to_string()];
     if let Some(depth) = si.depth {
       parts.push(format!("depth {}", depth));
       if let Some(seldepth) = si.seldepth {
@@ -298,7 +297,7 @@ impl Interface {
             Some("moves") => break,
             Some(fen_part) => {
               fen.push_str(fen_part);
-              fen.push_str(" ");
+              fen.push(' ');
             }
             None => break,
           }

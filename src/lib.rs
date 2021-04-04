@@ -1,5 +1,5 @@
-#![allow(clippy::complexity)]
-#![allow(clippy::redundant_clone)]
+#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::too_many_arguments)]
 
 #[cfg(target_os = "macos")]
 #[global_allocator]

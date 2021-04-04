@@ -200,7 +200,7 @@ impl Position {
           piece_iter.next().ok_or(FENParseError::TooFewPieces)?;
         if piece_or_digit.is_ascii_digit() {
           let digit = piece_or_digit.to_digit(10).unwrap();
-          if digit < 1 || digit > 8 {
+          if !(1..=8).contains(&digit) {
             return Err(FENParseError::InvalidPiece);
           }
           skip = digit - 1;
@@ -635,6 +635,7 @@ impl Position {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
   use super::*;
 

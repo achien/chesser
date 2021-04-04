@@ -24,7 +24,9 @@ pub enum Square {
   A8, B8, C8, D8, E8, F8, G8, H8,
 }
 
-#[derive(Debug, Clone, Copy, IntoPrimitive, PartialEq, UnsafeFromPrimitive)]
+#[derive(
+  Debug, Clone, Copy, IntoPrimitive, PartialEq, UnsafeFromPrimitive,
+)]
 #[repr(i32)]
 pub enum Rank {
   R1,
@@ -48,7 +50,9 @@ pub const RANKS: [Rank; 8] = [
   Rank::R8,
 ];
 
-#[derive(Debug, Clone, Copy, IntoPrimitive, PartialEq, UnsafeFromPrimitive)]
+#[derive(
+  Debug, Clone, Copy, IntoPrimitive, PartialEq, UnsafeFromPrimitive,
+)]
 #[repr(i32)]
 pub enum File {
   A,
