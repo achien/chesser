@@ -1,5 +1,5 @@
-use chessier::notchess::num_format::format;
-use chessier::perft::*;
+use chesser::notchess::num_format::format;
+use chesser::perft::*;
 use std::time::Instant;
 
 const TOTAL_CUTOFF: u64 = 2_718_281_828;

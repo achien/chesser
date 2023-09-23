@@ -1,7 +1,7 @@
-use chessier::moves::*;
-use chessier::position::*;
-use chessier::search::*;
-use chessier::square::*;
+use chesser::moves::*;
+use chesser::position::*;
+use chesser::search::*;
+use chesser::square::*;
 use std::sync::{Arc, Mutex};
 
 fn test_positions(cases: &[(&str, &str, &str, i32)]) {

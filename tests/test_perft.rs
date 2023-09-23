@@ -1,4 +1,4 @@
-use chessier::perft::*;
+use chesser::perft::*;
 
 const TOTAL_CUTOFF: u64 = 314_159;
 

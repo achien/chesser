@@ -1,5 +1,5 @@
-use chessier::attacks::*;
-use chessier::square::*;
+use chesser::attacks::*;
+use chesser::square::*;
 
 const ITERATIONS: i32 = 100_000_000;
 

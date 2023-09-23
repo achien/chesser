@@ -1,9 +1,9 @@
-use chessier::notchess::num_format::format;
-use chessier::perft::*;
-use chessier::piece::*;
-use chessier::position::Position;
-use chessier::square::*;
-use chessier::zobrist_hash::ZobristHash;
+use chesser::notchess::num_format::format;
+use chesser::perft::*;
+use chesser::piece::*;
+use chesser::position::Position;
+use chesser::square::*;
+use chesser::zobrist_hash::ZobristHash;
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;

@@ -1,8 +1,8 @@
-use chessier::attacks::Attacks;
-use chessier::move_generation::MoveGenerator;
-use chessier::piece::Color;
-use chessier::position::*;
-use chessier::search::*;
+use chesser::attacks::Attacks;
+use chesser::move_generation::MoveGenerator;
+use chesser::piece::Color;
+use chesser::position::*;
+use chesser::search::*;
 use crossbeam_channel::{self, select};
 use std::io::{self, Write};
 use std::str::{FromStr, SplitWhitespace};
@@ -194,7 +194,7 @@ impl Interface {
         None => continue,
         Some("uci") => {
           output.println(&format!(
-            "id name Chessier v{}\nid author Andrew Chien",
+            "id name chesser v{}\nid author Andrew Chien",
             env!("CARGO_PKG_VERSION")
           ));
           output.println("uciok");
