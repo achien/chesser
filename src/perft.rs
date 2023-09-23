@@ -118,7 +118,7 @@ pub struct PerftWithFullResult<'a> {
 
 impl<'a> PerftRunner<'a> for PerftWithFullResult<'a> {
   fn run(&self, depth: usize) {
-    let mut position = Position::from_fen(&self.fen).unwrap();
+    let mut position = Position::from_fen(self.fen).unwrap();
     let expected_result = &self.results[depth - 1];
     let actual_result = self.perft.perft_all_stats(&mut position, depth);
     assert_eq!(*expected_result, actual_result);
@@ -145,7 +145,7 @@ pub struct PerftWithTotalOnly<'a> {
 
 impl<'a> PerftRunner<'a> for PerftWithTotalOnly<'a> {
   fn run(&self, depth: usize) {
-    let mut position = Position::from_fen(&self.fen).unwrap();
+    let mut position = Position::from_fen(self.fen).unwrap();
     let expected_result = &self.results[depth - 1];
     let actual_result = self.perft.perft_total(&mut position, depth);
     assert_eq!(*expected_result, actual_result);

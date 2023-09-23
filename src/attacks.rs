@@ -436,12 +436,8 @@ fn gen_rand_magic() -> u64 {
 }
 
 fn find_magic_bits(magic: u64, max_bits: i32, mask: Bitboard) -> Option<i32> {
-  for bits in (mask.count() as i32)..(max_bits + 1) {
-    if test_magic(magic, bits, mask) {
-      return Some(bits);
-    }
-  }
-  None
+  ((mask.count() as i32)..(max_bits + 1))
+    .find(|&bits| test_magic(magic, bits, mask))
 }
 
 fn test_magic(magic: u64, bits: i32, mask: Bitboard) -> bool {
@@ -474,7 +470,7 @@ impl Iterator for OccupancyIter {
       None
     } else {
       let mut occupancy = Bitboard::empty();
-      for (i, s) in self.mask.clone().into_iter().enumerate() {
+      for (i, s) in self.mask.into_iter().enumerate() {
         if (self.counter & (1 << i)) != 0 {
           occupancy |= s;
         }

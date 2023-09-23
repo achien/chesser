@@ -226,11 +226,11 @@ impl Interface {
               search_thread.quit();
               self.search_thread = None;
             }
-            match self.parse_go(&mut tokens, &position) {
+            match self.parse_go(&mut tokens, position) {
               Err(msg) => output.eprintln(&msg),
               Ok(params) => {
                 self.search_thread = Some(SearchThread::spawn(
-                  tt.as_ref().map(|x| Arc::clone(x)),
+                  tt.as_ref().map(Arc::clone),
                   position.clone(),
                   params,
                   output.clone(),

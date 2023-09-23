@@ -46,17 +46,17 @@ impl Ord for Score {
     match self {
       Self::WinIn(ply) => match other {
         // Winning earlier is better
-        Self::WinIn(other_ply) => other_ply.cmp(&ply),
+        Self::WinIn(other_ply) => other_ply.cmp(ply),
         _ => Ordering::Greater,
       },
       Self::Value(value) => match other {
         Self::WinIn(_) => Ordering::Less,
-        Self::Value(other_value) => value.cmp(&other_value),
+        Self::Value(other_value) => value.cmp(other_value),
         Self::LoseIn(_) => Ordering::Greater,
       },
       Self::LoseIn(ply) => match other {
         // Losing later is better
-        Self::LoseIn(other_ply) => ply.cmp(&other_ply),
+        Self::LoseIn(other_ply) => ply.cmp(other_ply),
         _ => Ordering::Less,
       },
     }
@@ -160,6 +160,7 @@ pub fn make_transposition_table(bytes: usize) -> TTType {
   TranspositionTable::new_byte_size(bytes)
 }
 
+#[derive(Default)]
 pub struct SearchParams {
   pub searchmoves: Vec<Move>,
   pub ponder: bool,
@@ -171,23 +172,6 @@ pub struct SearchParams {
   pub mate: Option<i32>,
   pub movetime: Option<Duration>,
   pub infinite: bool,
-}
-
-impl Default for SearchParams {
-  fn default() -> Self {
-    SearchParams {
-      searchmoves: Vec::new(),
-      ponder: false,
-      time: [None; 2],
-      inc: [None; 2],
-      movestogo: None,
-      depth: None,
-      nodes: None,
-      mate: None,
-      movetime: None,
-      infinite: false,
-    }
-  }
 }
 
 pub struct Search {
@@ -417,7 +401,7 @@ impl Search {
       pos.make_move(&m);
 
       // Skip any illegal moves
-      if self.movegen.in_check(&pos, color) {
+      if self.movegen.in_check(pos, color) {
         pos.unmake_move();
         continue;
       }
@@ -467,7 +451,7 @@ impl Search {
     // If no legal move is found it's either checkmate or stalemate and we need
     // to return that as the result
     if !has_legal_move {
-      if self.movegen.in_check(&pos, color) {
+      if self.movegen.in_check(pos, color) {
         NodeResult::Leaf(Score::LoseIn(0))
       } else {
         NodeResult::Leaf(Score::Value(0))
@@ -517,7 +501,7 @@ impl Search {
       self.nodes_visited += 1;
 
       // Skip any illegal moves
-      if self.movegen.in_check(&pos, color) {
+      if self.movegen.in_check(pos, color) {
         pos.unmake_move();
         continue;
       }

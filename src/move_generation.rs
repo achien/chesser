@@ -1103,14 +1103,11 @@ mod tests {
       .en_passant_target(Some(Square::C6));
     let moves = MoveGenerator::new().moves(&builder.build());
     assert_eq!(2, moves.len(), "moves={:?}", moves);
-    assert_eq!(
-      true,
-      moves.contains(&Move {
-        kind: MoveKind::EnPassantCapture,
-        from: Square::B5,
-        to: Square::C6
-      })
-    );
+    assert!(moves.contains(&Move {
+      kind: MoveKind::EnPassantCapture,
+      from: Square::B5,
+      to: Square::C6
+    }));
   }
 
   #[test]
@@ -1123,14 +1120,11 @@ mod tests {
       .en_passant_target(Some(Square::B3));
     let moves = MoveGenerator::new().moves(&builder.build());
     assert_eq!(2, moves.len(), "moves={:?}", moves);
-    assert_eq!(
-      true,
-      moves.contains(&Move {
-        kind: MoveKind::EnPassantCapture,
-        from: Square::A4,
-        to: Square::B3,
-      })
-    );
+    assert!(moves.contains(&Move {
+      kind: MoveKind::EnPassantCapture,
+      from: Square::A4,
+      to: Square::B3,
+    }));
   }
 
   #[test]
@@ -1148,19 +1142,19 @@ mod tests {
       .place(Square::H1, Piece::Rook, Color::White);
     let position = builder.build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(false, moves.contains(&castle_move));
+    assert!(!moves.contains(&castle_move));
 
     // Castle flag must be set
     builder.can_castle_kside(Color::White, true);
     let position = builder.build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(true, moves.contains(&castle_move));
+    assert!(moves.contains(&castle_move));
 
     // King must not be in check
     let position =
       builder.clone().place(Square::F3, Piece::Knight, Color::Black).build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(false, moves.contains(&castle_move));
+    assert!(!moves.contains(&castle_move));
 
     // King must not pass through check
     let position = builder
@@ -1168,7 +1162,7 @@ mod tests {
       .place(Square::E2, Piece::BlackPawn, Color::Black)
       .build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(false, moves.contains(&castle_move));
+    assert!(!moves.contains(&castle_move));
   }
 
   #[test]
@@ -1186,19 +1180,19 @@ mod tests {
       .place(Square::A1, Piece::Rook, Color::White);
     let position = builder.build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(false, moves.contains(&castle_move));
+    assert!(!moves.contains(&castle_move));
 
     // Castle flag must be set
     builder.can_castle_qside(Color::White, true);
     let position = builder.build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(true, moves.contains(&castle_move));
+    assert!(moves.contains(&castle_move));
 
     // King must not be in check
     let position =
       builder.clone().place(Square::C3, Piece::Knight, Color::Black).build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(false, moves.contains(&castle_move));
+    assert!(!moves.contains(&castle_move));
 
     // King must not pass through check
     let position = builder
@@ -1206,7 +1200,7 @@ mod tests {
       .place(Square::B2, Piece::BlackPawn, Color::Black)
       .build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(false, moves.contains(&castle_move));
+    assert!(!moves.contains(&castle_move));
   }
 
   #[test]
@@ -1224,13 +1218,13 @@ mod tests {
       .place(Square::H8, Piece::Rook, Color::Black);
     let position = builder.build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(false, moves.contains(&castle_move));
+    assert!(!moves.contains(&castle_move));
 
     // Castle flag must be set
     builder.can_castle_kside(Color::Black, true);
     let position = builder.build();
     let moves = MoveGenerator::new().moves(&position);
-    assert_eq!(true, moves.contains(&castle_move));
+    assert!(moves.contains(&castle_move));
   }
 
   #[test]
@@ -1241,8 +1235,8 @@ mod tests {
       .place(Square::A3, Piece::King, Color::Black)
       .build();
     let mg = MoveGenerator::new();
-    assert_eq!(true, mg.in_check(&pos, Color::White));
-    assert_eq!(false, mg.in_check(&pos, Color::Black));
+    assert!(mg.in_check(&pos, Color::White));
+    assert!(!mg.in_check(&pos, Color::Black));
   }
 
   #[test]
@@ -1470,11 +1464,7 @@ mod tests {
       .place(Square::G6, Piece::King, Color::White)
       .place(Square::H8, Piece::King, Color::Black)
       .build();
-    assert_eq!(
-      false,
-      movegen.is_checkmate(&mut pos),
-      "stalemate, black to move"
-    );
+    assert!(!movegen.is_checkmate(&mut pos), "stalemate, black to move");
 
     // True if checkmate by white
     let mut pos = PositionBuilder::new()
@@ -1483,7 +1473,7 @@ mod tests {
       .place(Square::G7, Piece::King, Color::White)
       .place(Square::H8, Piece::King, Color::Black)
       .build();
-    assert_eq!(true, movegen.is_checkmate(&mut pos), "checkmate by white");
+    assert!(movegen.is_checkmate(&mut pos), "checkmate by white");
 
     let mut pos = PositionBuilder::new()
       .side_to_move(Color::White)
@@ -1491,11 +1481,7 @@ mod tests {
       .place(Square::G6, Piece::King, Color::Black)
       .place(Square::H8, Piece::King, Color::White)
       .build();
-    assert_eq!(
-      false,
-      movegen.is_checkmate(&mut pos),
-      "stalemate, white to move"
-    );
+    assert!(!movegen.is_checkmate(&mut pos), "stalemate, white to move");
 
     let mut pos = PositionBuilder::new()
       .side_to_move(Color::White)
@@ -1503,6 +1489,6 @@ mod tests {
       .place(Square::G7, Piece::King, Color::Black)
       .place(Square::H8, Piece::King, Color::White)
       .build();
-    assert_eq!(true, movegen.is_checkmate(&mut pos), "checkmate by black");
+    assert!(movegen.is_checkmate(&mut pos), "checkmate by black");
   }
 }

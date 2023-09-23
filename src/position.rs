@@ -714,10 +714,10 @@ mod tests {
 
     assert_eq!(Color::White, pos.side_to_move());
 
-    assert_eq!(true, pos.can_castle_kside(Color::White));
-    assert_eq!(true, pos.can_castle_qside(Color::White));
-    assert_eq!(true, pos.can_castle_kside(Color::Black));
-    assert_eq!(true, pos.can_castle_qside(Color::Black));
+    assert!(pos.can_castle_kside(Color::White));
+    assert!(pos.can_castle_qside(Color::White));
+    assert!(pos.can_castle_kside(Color::Black));
+    assert!(pos.can_castle_qside(Color::Black));
 
     assert_eq!(None, pos.en_passant_target());
 
@@ -741,22 +741,22 @@ mod tests {
   #[test]
   fn test_fen_castling() {
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w - - 0 0").unwrap();
-    assert_eq!(false, pos.can_castle_kside(Color::White));
-    assert_eq!(false, pos.can_castle_qside(Color::White));
-    assert_eq!(false, pos.can_castle_kside(Color::Black));
-    assert_eq!(false, pos.can_castle_qside(Color::Black));
+    assert!(!pos.can_castle_kside(Color::White));
+    assert!(!pos.can_castle_qside(Color::White));
+    assert!(!pos.can_castle_kside(Color::Black));
+    assert!(!pos.can_castle_qside(Color::Black));
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w kK - 0 0").unwrap();
-    assert_eq!(true, pos.can_castle_kside(Color::White));
-    assert_eq!(false, pos.can_castle_qside(Color::White));
-    assert_eq!(true, pos.can_castle_kside(Color::Black));
-    assert_eq!(false, pos.can_castle_qside(Color::Black));
+    assert!(pos.can_castle_kside(Color::White));
+    assert!(!pos.can_castle_qside(Color::White));
+    assert!(pos.can_castle_kside(Color::Black));
+    assert!(!pos.can_castle_qside(Color::Black));
 
     let pos = Position::from_fen("8/8/8/8/8/8/8/8 w qQ - 0 0").unwrap();
-    assert_eq!(false, pos.can_castle_kside(Color::White));
-    assert_eq!(true, pos.can_castle_qside(Color::White));
-    assert_eq!(false, pos.can_castle_kside(Color::Black));
-    assert_eq!(true, pos.can_castle_qside(Color::Black));
+    assert!(!pos.can_castle_kside(Color::White));
+    assert!(pos.can_castle_qside(Color::White));
+    assert!(!pos.can_castle_kside(Color::Black));
+    assert!(pos.can_castle_qside(Color::Black));
   }
 
   #[test]
@@ -1151,34 +1151,34 @@ mod tests {
   #[test]
   fn test_draw() {
     let mut pos = Position::startpos();
-    assert_eq!(false, pos.is_repetition());
+    assert!(!pos.is_repetition());
     pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::G1,
       to: Square::H3,
     });
-    assert_eq!(false, pos.is_repetition());
+    assert!(!pos.is_repetition());
     pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::B8,
       to: Square::C6,
     });
-    assert_eq!(false, pos.is_repetition());
+    assert!(!pos.is_repetition());
     pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::H3,
       to: Square::G1,
     });
-    assert_eq!(false, pos.is_repetition());
+    assert!(!pos.is_repetition());
     pos.make_move(&Move {
       kind: MoveKind::Move,
       from: Square::C6,
       to: Square::B8,
     });
     // The first repeated position is a draw
-    assert_eq!(true, pos.is_repetition());
+    assert!(pos.is_repetition());
 
     pos.unmake_move();
-    assert_eq!(false, pos.is_repetition());
+    assert!(!pos.is_repetition());
   }
 }
