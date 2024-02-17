@@ -244,7 +244,7 @@ impl Search {
       let color = self.position.side_to_move();
       let time = self.params.time[color as usize];
       if let Some(time) = time {
-        // - Try to use 5% of remaining time for this search, assynubg
+        // - Try to use 5% of remaining time for this search, assuming
         //   the game will go on 20 more turns
         // - Leave at least 1 second on the clock before we press it if we
         //   have at least 2 seconds remaining, otherwise leave at least half
