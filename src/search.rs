@@ -317,7 +317,7 @@ impl Search {
         // Find the best move so far
         let (score, pv) = self.get_pv();
         let score = score.expect("No score found in search");
-        let m = pv.get(0).expect("No best move found in search");
+        let m = pv.first().expect("No best move found in search");
         SearchResult::Move(score, m.clone())
       }
       NodeResult::Exact(score, m) => {
